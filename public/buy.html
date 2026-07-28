@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" id="htmlRoot">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ReviewReply AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+<style>
+  body {
+    margin: 0; background: #F5F4EE; color: #2D2A26;
+    font-family: -apple-system, sans-serif; line-height: 1.6;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 60px 24px 100px; }
+  .eyebrow { text-align: center; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #A56A45; margin-bottom: 14px; }
+  h1 { font-family: 'Fraunces', serif; font-size: 34px; text-align: center; margin: 0 0 16px; line-height: 1.2; }
+  .sub { text-align: center; color: #87837A; font-size: 16px; max-width: 460px; margin: 0 auto 36px; }
+  .price-box {
+    background: #FFFFFF; border: 1px solid #E4E1D6; border-radius: 16px;
+    padding: 32px; text-align: center; margin-bottom: 40px;
+  }
+  .price { font-size: 42px; font-weight: 700; margin-bottom: 4px; }
+  .price-note { color: #87837A; font-size: 13px; margin-bottom: 24px; }
+  button.buy-btn {
+    background: #D97757; color: #FFFFFF; border: none; cursor: pointer;
+    font-weight: 600; font-size: 16px; padding: 16px 40px; border-radius: 10px;
+  }
+  button.buy-btn:disabled { opacity: 0.6; cursor: default; }
+  .error { color: #B34B3C; font-size: 13px; margin-top: 14px; }
+  .features { margin: 40px 0; }
+  .feature { display: flex; gap: 14px; margin-bottom: 20px; align-items: flex-start; }
+  .feature .dot { width: 6px; height: 6px; border-radius: 50%; background: #D97757; margin-top: 8px; flex-shrink: 0; }
+  .feature p { margin: 0; }
+  .feature strong { display: block; margin-bottom: 2px; }
+  footer { text-align: center; color: #87837A; font-size: 12px; margin-top: 60px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="eyebrow">AI-powered &middot; Instant access</div>
+  <h1>ReviewReply AI</h1>
+  <p class="sub">Paste any customer review, get thoughtful, personalized replies in seconds -- in 20 languages, with real photo understanding.</p>
+
+  <div class="price-box">
+    <div class="price">$39</div>
+    <div class="price-note">one-time payment &middot; lifetime access &middot; paid via crypto</div>
+    <button class="buy-btn" id="buyBtn" onclick="buy()">Get instant access</button>
+    <div class="note" style="font-size:12px;color:#A56A45;margin-top:16px;">You'll be redirected straight to your access code after payment.</div>
+    <div class="error" id="errorMsg" style="display:none;"></div>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <div class="dot"></div>
+      <p><strong>3 unique replies per review</strong>Not fixed templates -- every reply is freshly written for the specific review, referencing real details the customer mentioned.</p>
+    </div>
+    <div class="feature">
+      <div class="dot"></div>
+      <p><strong>Understands photos</strong>Attach a photo from the review and the AI genuinely looks at it -- referencing what's actually in the picture, not guessing.</p>
+    </div>
+    <div class="feature">
+      <div class="dot"></div>
+      <p><strong>20 languages</strong>Including full right-to-left support for Arabic and Persian. Replies are written natively in the language you choose.</p>
+    </div>
+    <div class="feature">
+      <div class="dot"></div>
+      <p><strong>3 tone options</strong>Warm, professional, or short -- pick what fits your brand for each reply.</p>
+    </div>
+    <div class="feature">
+      <div class="dot"></div>
+      <p><strong>Handles negative reviews gracefully</strong>Acknowledges concerns without being defensive, and suggests a concrete next step instead of empty apologies.</p>
+    </div>
+  </div>
+
+  <footer>Plainwork &middot; a tool by Ksenia</footer>
+</div>
+
+<script>
+  async function buy() {
+    const btn = document.getElementById('buyBtn');
+    const errorMsg = document.getElementById('errorMsg');
+    btn.disabled = true;
+    btn.textContent = 'Preparing payment...';
+    errorMsg.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/create-payment', { method: 'POST' });
+      const data = await res.json();
+
+      if (data.paymentUrl) {
+        window.location.href = data.paymentUrl;
+      } else {
+        throw new Error(data.error || 'Something went wrong');
+      }
+    } catch (err) {
+      errorMsg.textContent = 'Error: ' + err.message;
+      errorMsg.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Get instant access';
+    }
+  }
+</script>
+
+</body>
+</html>
