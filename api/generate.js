@@ -1,15 +1,20 @@
 // api/generate.js
 // Один код доступа, хранится в переменной окружения ACCESS_CODE на Vercel.
 // Поддерживает как обычный текст, так и фото (мультимодальный запрос).
+// Также разрешает ограниченное число бесплатных попыток (trial: true) —
+// подсчёт ведётся на стороне браузера (localStorage), поэтому это не
+// железная защита, а простая мягкая мера, как и общий код доступа.
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { licenseCode, content } = req.body;
+  const { licenseCode, content, trial } = req.body;
 
-  if (!licenseCode || licenseCode !== process.env.ACCESS_CODE) {
+  const hasValidCode = licenseCode && licenseCode === process.env.ACCESS_CODE;
+
+  if (!hasValidCode && !trial) {
     return res.status(403).json({ error: 'Invalid access code' });
   }
 
