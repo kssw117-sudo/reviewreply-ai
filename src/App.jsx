@@ -16,8 +16,8 @@ export default function ReviewReplyAI() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [copiedIdx, setCopiedIdx] = useState(null);
-  const [licenseCode, setLicenseCode] = useState('');
-  const [unlocked, setUnlocked] = useState(false);
+  const [licenseCode, setLicenseCode] = useState(() => localStorage.getItem('rr_licenseCode') || '');
+  const [unlocked, setUnlocked] = useState(() => localStorage.getItem('rr_unlocked') === 'true');
   const [licenseError, setLicenseError] = useState('');
   const [includeEmoji, setIncludeEmoji] = useState(true);
   const [photo, setPhoto] = useState(null);
@@ -184,10 +184,37 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
     reader.readAsDataURL(file);
   }
 
-  function handleUnlock() {
+  // Проверка кода: коды AppSumo начинаются с "REPLY-" и проверяются через
+  // /api/redeem-appsumo (уникальный код на покупателя, отмечается как
+  // использованный). Обычные коды (Getly) работают как раньше.
+  async function handleUnlock() {
     if (!licenseCode.trim()) return;
     setLicenseError('');
+
+    if (licenseCode.trim().toUpperCase().startsWith('REPLY-')) {
+      try {
+        const res = await fetch('/api/redeem-appsumo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: licenseCode.trim() })
+        });
+        const data = await res.json();
+        if (data.success) {
+          setUnlocked(true);
+          localStorage.setItem('rr_unlocked', 'true');
+          localStorage.setItem('rr_licenseCode', licenseCode.trim());
+        } else {
+          setLicenseError(data.error || t.licenseInvalid);
+        }
+      } catch (err) {
+        setLicenseError(t.licenseInvalid);
+      }
+      return;
+    }
+
     setUnlocked(true);
+    localStorage.setItem('rr_unlocked', 'true');
+    localStorage.setItem('rr_licenseCode', licenseCode.trim());
   }
 
   function handleCopy(replyText, idx) {
