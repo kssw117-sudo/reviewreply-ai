@@ -6001,8 +6001,8 @@
   },
   {
     "code": "REPLY-HA6N-43GH",
-    "redeemed": false,
-    "redeemed_at": null,
+    "redeemed": true,
+    "redeemed_at": "2026-08-10T14:27:09.679Z",
     "redeemed_email": null
   },
   {
