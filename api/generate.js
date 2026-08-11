@@ -1,9 +1,10 @@
 // api/generate.js
-// Один код доступа, хранится в переменной окружения ACCESS_CODE на Vercel.
-// Поддерживает как обычный текст, так и фото (мультимодальный запрос).
-// Также разрешает ограниченное число бесплатных попыток (trial: true) —
-// подсчёт ведётся на стороне браузера (localStorage), поэтому это не
-// железная защита, а простая мягкая мера, как и общий код доступа.
+// Принимает три случая:
+// 1. Общий код с Getly, хранится в переменной окружения ACCESS_CODE
+// 2. Уникальные AppSumo-коды вида REPLY-XXXX-XXXX (сами коды проверяются
+//    и гасятся отдельной функцией /api/redeem-appsumo при разблокировке;
+//    здесь просто пропускаем любой код с этим префиксом)
+// 3. Бесплатный пробный период (trial: true) — без кода вообще
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -12,7 +13,9 @@ export default async function handler(req, res) {
 
   const { licenseCode, content, trial } = req.body;
 
-  const hasValidCode = licenseCode && licenseCode === process.env.ACCESS_CODE;
+  const isSharedCode = licenseCode && licenseCode === process.env.ACCESS_CODE;
+  const isAppSumoCode = licenseCode && licenseCode.trim().toUpperCase().startsWith('REPLY-');
+  const hasValidCode = isSharedCode || isAppSumoCode;
 
   if (!hasValidCode && !trial) {
     return res.status(403).json({ error: 'Invalid access code' });
