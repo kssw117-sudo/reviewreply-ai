@@ -1,10 +1,31 @@
 import React, { useState } from 'react';
 
 const FREE_TRIAL_LIMIT = 2;
+const DAILY_GEN_LIMIT = 50;
+const DAILY_GEN_KEY = 'rr_daily_gens';
 
 function getTrialCount() {
   const stored = localStorage.getItem('reviewreply_trial_count');
   return stored ? parseInt(stored, 10) : 0;
+}
+
+function checkAndUseDailyLimit() {
+  const today = new Date().toISOString().slice(0, 10);
+  let record;
+  try {
+    record = JSON.parse(localStorage.getItem(DAILY_GEN_KEY) || 'null');
+  } catch (e) {
+    record = null;
+  }
+  if (!record || record.date !== today) {
+    record = { date: today, count: 0 };
+  }
+  if (record.count >= DAILY_GEN_LIMIT) {
+    return false;
+  }
+  record.count += 1;
+  localStorage.setItem(DAILY_GEN_KEY, JSON.stringify(record));
+  return true;
 }
 
 export default function ReviewReplyAI() {
@@ -53,8 +74,8 @@ export default function ReviewReplyAI() {
   ];
 
   const ui = {
-    en: { title: 'ReviewReply AI', subtitle: 'Paste any customer review, get thoughtful replies in seconds.', businessLabel: 'Your business name', businessPh: 'e.g. Morning Coffee Shop', reviewLabel: "Paste the customer's review", reviewPh: 'e.g. Loved the coffee but service was slow on Saturday...', toneLabel: 'Reply tone', toneWarm: 'Warm', toneProfessional: 'Professional', toneBrief: 'Short', languageLabel: 'Interface language', generateBtn: 'Generate replies', generatingBtn: 'Writing replies...', fillError: 'Please fill in your business name and paste the review.', genError: 'Could not generate. Please try again.', positiveLabel: 'Positive review', negativeLabel: 'Negative review', mixedLabel: 'Mixed review', copyBtn: 'Copy', copiedBtn: 'Copied!', repliesHeading: 'Reply options' , licenseGateTitle: 'Enter your access code', licensePh: 'Access code', unlockBtn: 'Unlock', licenseInvalid: 'Invalid or inactive code', photoLabel: 'Attach a photo (optional)', uploadPhoto: 'Add photo', changePhoto: 'Change photo', emojiToggle: 'Emoji', noCodeText: 'No code? Buy access', freeTriesLabel: '{n} free {word} left -- no code needed', trialExhausted: "You've used your free replies. Enter a code, or buy access to keep going.", subtextLabel: 'Reading between the lines', socialBtnLabel: 'Turn into a social media post', socialHeading: 'Ready-to-post caption', socialGeneratingBtn: 'Writing caption...', followUpBtnLabel: 'Draft a private follow-up message', followUpHeading: 'Private message to the customer', followUpGeneratingBtn: 'Writing message...', haveCodeLabel: 'Already have a code?'},
-    ru: { title: 'ReviewReply AI', subtitle: 'Вставьте отзыв клиента — получите готовые варианты ответа за секунды.', businessLabel: 'Название бизнеса', businessPh: 'Например: кофейня «Утро»', reviewLabel: 'Вставьте отзыв клиента', reviewPh: 'Например: кофе понравился, но обслуживание было медленным в субботу...', toneLabel: 'Тон ответа', toneWarm: 'Тёплый', toneProfessional: 'Деловой', toneBrief: 'Короткий', languageLabel: 'Язык интерфейса', generateBtn: 'Сгенерировать ответы', generatingBtn: 'Пишу ответы...', fillError: 'Заполните название бизнеса и вставьте отзыв.', genError: 'Не удалось сгенерировать. Попробуйте ещё раз.', positiveLabel: 'Положительный отзыв', negativeLabel: 'Отрицательный отзыв', mixedLabel: 'Смешанный отзыв', copyBtn: 'Копировать', copiedBtn: 'Скопировано!', repliesHeading: 'Варианты ответа' , licenseGateTitle: 'Введите код доступа', licensePh: 'Код доступа', unlockBtn: 'Разблокировать', licenseInvalid: 'Неверный или неактивный код', photoLabel: 'Прикрепить фото (необязательно)', uploadPhoto: 'Загрузить фото', changePhoto: 'Сменить фото', emojiToggle: 'Эмодзи', noCodeText: 'Нет кода? Купить доступ', freeTriesLabel: 'Осталось {n} бесплатных попыток -- код не нужен', trialExhausted: 'Бесплатные попытки закончились. Введите код или купите доступ, чтобы продолжить.', subtextLabel: 'Между строк', socialBtnLabel: 'Превратить в пост для соцсетей', socialHeading: 'Готовая подпись для поста', socialGeneratingBtn: 'Пишу подпись...', followUpBtnLabel: 'Составить личное сообщение', followUpHeading: 'Личное сообщение клиенту', followUpGeneratingBtn: 'Пишу сообщение...', haveCodeLabel: 'Уже есть код?'},
+    en: { title: 'ReviewReply AI', subtitle: 'Paste any customer review, get thoughtful replies in seconds.', businessLabel: 'Your business name', businessPh: 'e.g. Morning Coffee Shop', reviewLabel: "Paste the customer's review", reviewPh: 'e.g. Loved the coffee but service was slow on Saturday...', toneLabel: 'Reply tone', toneWarm: 'Warm', toneProfessional: 'Professional', toneBrief: 'Short', languageLabel: 'Interface language', generateBtn: 'Generate replies', generatingBtn: 'Writing replies...', fillError: 'Please fill in your business name and paste the review.', genError: 'Could not generate. Please try again.', limitReached: 'Daily generation limit reached. Try again tomorrow.', positiveLabel: 'Positive review', negativeLabel: 'Negative review', mixedLabel: 'Mixed review', copyBtn: 'Copy', copiedBtn: 'Copied!', repliesHeading: 'Reply options' , licenseGateTitle: 'Enter your access code', licensePh: 'Access code', unlockBtn: 'Unlock', licenseInvalid: 'Invalid or inactive code', photoLabel: 'Attach a photo (optional)', uploadPhoto: 'Add photo', changePhoto: 'Change photo', emojiToggle: 'Emoji', noCodeText: 'No code? Buy access', freeTriesLabel: '{n} free {word} left -- no code needed', trialExhausted: "You've used your free replies. Enter a code, or buy access to keep going.", subtextLabel: 'Reading between the lines', socialBtnLabel: 'Turn into a social media post', socialHeading: 'Ready-to-post caption', socialGeneratingBtn: 'Writing caption...', followUpBtnLabel: 'Draft a private follow-up message', followUpHeading: 'Private message to the customer', followUpGeneratingBtn: 'Writing message...', haveCodeLabel: 'Already have a code?'},
+    ru: { title: 'ReviewReply AI', subtitle: 'Вставьте отзыв клиента — получите готовые варианты ответа за секунды.', businessLabel: 'Название бизнеса', businessPh: 'Например: кофейня «Утро»', reviewLabel: 'Вставьте отзыв клиента', reviewPh: 'Например: кофе понравился, но обслуживание было медленным в субботу...', toneLabel: 'Тон ответа', toneWarm: 'Тёплый', toneProfessional: 'Деловой', toneBrief: 'Короткий', languageLabel: 'Язык интерфейса', generateBtn: 'Сгенерировать ответы', generatingBtn: 'Пишу ответы...', fillError: 'Заполните название бизнеса и вставьте отзыв.', genError: 'Не удалось сгенерировать. Попробуйте ещё раз.', limitReached: 'Достигнут дневной лимит генераций. Попробуйте завтра.', positiveLabel: 'Положительный отзыв', negativeLabel: 'Отрицательный отзыв', mixedLabel: 'Смешанный отзыв', copyBtn: 'Копировать', copiedBtn: 'Скопировано!', repliesHeading: 'Варианты ответа' , licenseGateTitle: 'Введите код доступа', licensePh: 'Код доступа', unlockBtn: 'Разблокировать', licenseInvalid: 'Неверный или неактивный код', photoLabel: 'Прикрепить фото (необязательно)', uploadPhoto: 'Загрузить фото', changePhoto: 'Сменить фото', emojiToggle: 'Эмодзи', noCodeText: 'Нет кода? Купить доступ', freeTriesLabel: 'Осталось {n} бесплатных попыток -- код не нужен', trialExhausted: 'Бесплатные попытки закончились. Введите код или купите доступ, чтобы продолжить.', subtextLabel: 'Между строк', socialBtnLabel: 'Превратить в пост для соцсетей', socialHeading: 'Готовая подпись для поста', socialGeneratingBtn: 'Пишу подпись...', followUpBtnLabel: 'Составить личное сообщение', followUpHeading: 'Личное сообщение клиенту', followUpGeneratingBtn: 'Пишу сообщение...', haveCodeLabel: 'Уже есть код?'},
     ar: { title: 'ReviewReply AI', subtitle: 'الصق أي تقييم من العميل واحصل على ردود مدروسة خلال ثوانٍ.', businessLabel: 'اسم نشاطك التجاري', businessPh: 'مثال: مقهى الصباح', reviewLabel: 'الصق تقييم العميل', reviewPh: 'مثال: أحببت القهوة لكن الخدمة كانت بطيئة يوم السبت...', toneLabel: 'نبرة الرد', toneWarm: 'ودود', toneProfessional: 'احترافي', toneBrief: 'مختصر', languageLabel: 'لغة الواجهة', generateBtn: 'إنشاء الردود', generatingBtn: 'جارٍ كتابة الردود...', fillError: 'يرجى إدخال اسم النشاط ولصق التقييم.', genError: 'تعذر الإنشاء. حاول مرة أخرى.', positiveLabel: 'تقييم إيجابي', negativeLabel: 'تقييم سلبي', mixedLabel: 'تقييم مختلط', copyBtn: 'نسخ', copiedBtn: 'تم النسخ!', repliesHeading: 'خيارات الرد' , licenseGateTitle: 'أدخل رمز الوصول', licensePh: 'رمز الوصول', unlockBtn: 'فتح', licenseInvalid: 'رمز غير صالح أو غير مفعّل', photoLabel: 'إرفاق صورة (اختياري)', uploadPhoto: 'رفع صورة', changePhoto: 'تغيير الصورة', emojiToggle: 'الرموز التعبيرية', noCodeText: 'لا يوجد رمز؟ شراء الوصول', freeTriesLabel: 'متبقٍ {n} محاولة مجانية -- لا حاجة لرمز', trialExhausted: 'لقد استخدمت محاولاتك المجانية. أدخل رمزًا أو اشترِ الوصول للمتابعة.', subtextLabel: 'ما بين السطور', socialBtnLabel: 'تحويله إلى منشور على وسائل التواصل', socialHeading: 'تعليق جاهز للنشر', socialGeneratingBtn: 'جارٍ كتابة التعليق...', followUpBtnLabel: 'صياغة رسالة خاصة للمتابعة', followUpHeading: 'رسالة خاصة للعميل', followUpGeneratingBtn: 'جارٍ كتابة الرسالة...', haveCodeLabel: 'هل لديك رمز بالفعل؟'},
     fa: { title: 'ReviewReply AI', subtitle: 'نظر مشتری را وارد کنید و در چند ثانیه پاسخ‌های مناسب دریافت کنید.', businessLabel: 'نام کسب‌وکار', businessPh: 'مثال: کافه صبح', reviewLabel: 'نظر مشتری را وارد کنید', reviewPh: 'مثال: قهوه عالی بود اما سرویس روز شنبه کند بود...', toneLabel: 'لحن پاسخ', toneWarm: 'گرم', toneProfessional: 'حرفه‌ای', toneBrief: 'کوتاه', languageLabel: 'زبان رابط کاربری', generateBtn: 'ایجاد پاسخ‌ها', generatingBtn: 'در حال نوشتن...', fillError: 'لطفاً نام کسب‌وکار و نظر را وارد کنید.', genError: 'ایجاد نشد. دوباره امتحان کنید.', positiveLabel: 'نظر مثبت', negativeLabel: 'نظر منفی', mixedLabel: 'نظر ترکیبی', copyBtn: 'کپی', copiedBtn: 'کپی شد!', repliesHeading: 'گزینه‌های پاسخ' , licenseGateTitle: 'کد دسترسی را وارد کنید', licensePh: 'کد دسترسی', unlockBtn: 'باز کردن', licenseInvalid: 'کد نامعتبر یا غیرفعال', photoLabel: 'پیوست عکس (اختیاری)', uploadPhoto: 'آپلود عکس', changePhoto: 'تغییر عکس', emojiToggle: 'ایموجی', noCodeText: 'کد ندارید؟ خرید دسترسی', freeTriesLabel: '{n} تلاش رایگان باقی مانده -- بدون نیاز به کد', trialExhausted: 'تلاش‌های رایگان شما تمام شد. کد را وارد کنید یا دسترسی بخرید.', subtextLabel: 'بین خطوط', socialBtnLabel: 'تبدیل به پست شبکه اجتماعی', socialHeading: 'کپشن آماده انتشار', socialGeneratingBtn: 'در حال نوشتن کپشن...', followUpBtnLabel: 'پیش‌نویس پیام خصوصی', followUpHeading: 'پیام خصوصی به مشتری', followUpGeneratingBtn: 'در حال نوشتن پیام...', haveCodeLabel: 'کد دارید؟'},
     es: { title: 'ReviewReply AI', subtitle: 'Pega cualquier reseña y obtén respuestas listas en segundos.', businessLabel: 'Nombre del negocio', businessPh: 'Ej: Cafetería Mañana', reviewLabel: 'Pega la reseña del cliente', reviewPh: 'Ej: Me encantó el café pero el servicio fue lento el sábado...', toneLabel: 'Tono de la respuesta', toneWarm: 'Cálido', toneProfessional: 'Profesional', toneBrief: 'Breve', languageLabel: 'Idioma de la interfaz', generateBtn: 'Generar respuestas', generatingBtn: 'Escribiendo...', fillError: 'Completa el nombre del negocio y la reseña.', genError: 'No se pudo generar. Intenta de nuevo.', positiveLabel: 'Reseña positiva', negativeLabel: 'Reseña negativa', mixedLabel: 'Reseña mixta', copyBtn: 'Copiar', copiedBtn: '¡Copiado!', repliesHeading: 'Opciones de respuesta' , licenseGateTitle: 'Introduce tu código de acceso', licensePh: 'Código de acceso', unlockBtn: 'Desbloquear', licenseInvalid: 'Código inválido o inactivo', photoLabel: 'Adjuntar foto (opcional)', uploadPhoto: 'Subir foto', changePhoto: 'Cambiar foto', emojiToggle: 'Emoji', noCodeText: '¿Sin código? Comprar acceso', freeTriesLabel: 'Te quedan {n} pruebas gratis -- sin código', trialExhausted: 'Ya usaste tus pruebas gratis. Ingresa un código o compra acceso para continuar.', subtextLabel: 'Entre líneas', socialBtnLabel: 'Convertir en publicación', socialHeading: 'Descripción lista para publicar', socialGeneratingBtn: 'Escribiendo descripción...', followUpBtnLabel: 'Redactar un mensaje privado', followUpHeading: 'Mensaje privado para el cliente', followUpGeneratingBtn: 'Escribiendo mensaje...', haveCodeLabel: '¿Ya tienes un código?'},
@@ -87,6 +108,10 @@ export default function ReviewReplyAI() {
   async function handleGenerate() {
     if (!businessName.trim() || !reviewText.trim()) {
       setError(t.fillError);
+      return;
+    }
+    if (!checkAndUseDailyLimit()) {
+      setError(t.limitReached || 'Daily generation limit reached. Try again tomorrow.');
       return;
     }
     setError('');
@@ -226,6 +251,10 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
 
   async function handleGenerateSocialPost() {
     if (!result) return;
+    if (!checkAndUseDailyLimit()) {
+      setError(t.limitReached || 'Daily generation limit reached. Try again tomorrow.');
+      return;
+    }
     setSocialLoading(true);
     setSocialCopied(false);
 
@@ -267,6 +296,10 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
 
   async function handleGenerateFollowUp() {
     if (!result) return;
+    if (!checkAndUseDailyLimit()) {
+      setError(t.limitReached || 'Daily generation limit reached. Try again tomorrow.');
+      return;
+    }
     setFollowUpLoading(true);
     setFollowUpCopied(false);
 
@@ -607,11 +640,14 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
           </div>
         )}
 
-        <div className="flex items-center justify-center gap-1.5 mt-10 pt-6" style={{ borderTop: '1px solid #E4E1D6' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#87837A" strokeWidth="1.5">
-            <path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3z" />
-          </svg>
-          <span className="text-xs" style={{ color: '#87837A' }}>Powered by Claude &middot; Plainwork by Ksenia</span>
+        <div className="flex flex-col items-center justify-center gap-1.5 mt-10 pt-6" style={{ borderTop: '1px solid #E4E1D6' }}>
+          <div className="flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#87837A" strokeWidth="1.5">
+              <path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3z" />
+            </svg>
+            <span className="text-xs" style={{ color: '#87837A' }}>Powered by Claude &middot; Plainwork by Ksenia</span>
+          </div>
+          <span className="text-xs" style={{ color: '#B5B0A3' }}>Fair use: up to 50 generations per day</span>
         </div>
       </div>
     </div>
