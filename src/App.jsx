@@ -139,7 +139,7 @@ export default function ReviewReplyAI() {
 
 "${reviewText}"
 
-${toneInstruction} ${emojiInstruction} First, detect the language the review itself is written in, and write your reply in that same language -- do not default to English unless the review is actually in English. ${photoInstruction}
+${toneInstruction} ${emojiInstruction} Write your reply in ${currentLang.englishName}, matching the interface language selected by the business owner -- regardless of what language the review itself is written in. ${photoInstruction}
 
 Read the review carefully and reference specific details the customer actually mentioned (a product name, a staff member, a specific issue or compliment) instead of generic phrases like "thank you for your feedback." Be precise, not generic.
 
