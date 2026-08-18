@@ -38,6 +38,7 @@ export default function ReviewReplyAI() {
   const [error, setError] = useState('');
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [licenseCode, setLicenseCode] = useState(() => localStorage.getItem('rr_licenseCode') || '');
+  const [showSupportEmail, setShowSupportEmail] = useState(false);
   const [unlocked, setUnlocked] = useState(() => localStorage.getItem('rr_unlocked') === 'true');
   const [licenseError, setLicenseError] = useState('');
   const [includeEmoji, setIncludeEmoji] = useState(true);
@@ -648,6 +649,21 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
             <span className="text-xs" style={{ color: '#87837A' }}>Powered by Claude &middot; Plainwork by Ksenia</span>
           </div>
           <span className="text-xs" style={{ color: '#B5B0A3' }}>Fair use: up to 50 generations per day</span>
+          <div className="mt-1">
+            {!showSupportEmail ? (
+              <button
+                onClick={() => setShowSupportEmail(true)}
+                className="text-xs"
+                style={{ color: '#A56A45', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Support
+              </button>
+            ) : (
+              <a href="mailto:kssw117@gmail.com" className="text-xs" style={{ color: '#A56A45' }}>
+                kssw117@gmail.com
+              </a>
+            )}
+          </div>
         </div>
       </div>
     </div>
