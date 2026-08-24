@@ -11,24 +11,35 @@
     margin: 0; background: #F5F4EE; color: #2D2A26;
     font-family: -apple-system, sans-serif; line-height: 1.6;
   }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
   .wrap { max-width: 640px; margin: 0 auto; padding: 60px 24px 100px; }
-  .eyebrow { text-align: center; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #A56A45; margin-bottom: 14px; }
-  h1 { font-family: 'Fraunces', serif; font-size: 34px; text-align: center; margin: 0 0 16px; line-height: 1.2; }
-  .sub { text-align: center; color: #87837A; font-size: 16px; max-width: 460px; margin: 0 auto 36px; }
+  .eyebrow { text-align: center; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #A56A45; margin-bottom: 14px; animation: fadeUp 0.5s ease both; }
+  h1 { font-family: 'Fraunces', serif; font-size: 34px; text-align: center; margin: 0 0 16px; line-height: 1.2; animation: fadeUp 0.5s ease both; animation-delay: 0.05s; }
+  .sub { text-align: center; color: #87837A; font-size: 16px; max-width: 460px; margin: 0 auto 36px; animation: fadeUp 0.5s ease both; animation-delay: 0.1s; }
   .price-box {
     background: #FFFFFF; border: 1px solid #E4E1D6; border-radius: 16px;
     padding: 32px; text-align: center; margin-bottom: 40px;
+    animation: fadeUp 0.5s ease both; animation-delay: 0.15s;
   }
   .price { font-size: 42px; font-weight: 700; margin-bottom: 4px; }
   .price-note { color: #87837A; font-size: 13px; margin-bottom: 24px; }
-  button.buy-btn {
-    background: #D97757; color: #FFFFFF; border: none; cursor: pointer;
+  a.buy-btn {
+    display: inline-block; background: #D97757; color: #FFFFFF; text-decoration: none;
     font-weight: 600; font-size: 16px; padding: 16px 40px; border-radius: 10px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
-  button.buy-btn:disabled { opacity: 0.6; cursor: default; }
-  .error { color: #B34B3C; font-size: 13px; margin-top: 14px; }
+  a.buy-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(217,119,87,0.35); }
+  a.buy-btn:active { transform: translateY(0); }
   .features { margin: 40px 0; }
-  .feature { display: flex; gap: 14px; margin-bottom: 20px; align-items: flex-start; }
+  .feature {
+    display: flex; gap: 14px; margin-bottom: 20px; align-items: flex-start;
+    opacity: 0; animation: fadeUp 0.5s ease both;
+  }
+  .feature:nth-child(1) { animation-delay: 0.2s; }
+  .feature:nth-child(2) { animation-delay: 0.26s; }
+  .feature:nth-child(3) { animation-delay: 0.32s; }
+  .feature:nth-child(4) { animation-delay: 0.38s; }
+  .feature:nth-child(5) { animation-delay: 0.44s; }
   .feature .dot { width: 6px; height: 6px; border-radius: 50%; background: #D97757; margin-top: 8px; flex-shrink: 0; }
   .feature p { margin: 0; }
   .feature strong { display: block; margin-bottom: 2px; }
@@ -44,11 +55,9 @@
 
   <div class="price-box">
     <div class="price">$39</div>
-    <div class="price-note">one-time payment &middot; lifetime access &middot; paid via crypto</div>
-    <button class="buy-btn" id="buyBtn" onclick="buy()">Get instant access</button>
-    <div class="note" style="font-size:12px;color:#A56A45;margin-top:16px;">Instant delivery -- you'll be redirected straight to your access code right after payment. No waiting.</div>
-    <div class="note" style="font-size:12px;color:#A56A45;margin-top:8px;">Paid via crypto (USDT, USDC, BTC & more) -- a standard, secure payment method. Takes about 2 minutes, even the first time.</div>
-    <div class="error" id="errorMsg" style="display:none;"></div>
+    <div class="price-note">one-time payment &middot; lifetime access &middot; secure card payment</div>
+    <a class="buy-btn" href="https://app.lava.top/products/e592921f-587c-49bf-90a6-a0fd27052ab6" target="_blank" rel="noopener">Get instant access</a>
+    <div class="note" style="font-size:12px;color:#A56A45;margin-top:16px;">Instant delivery -- your access code arrives right after payment.</div>
   </div>
 
   <div class="features">
@@ -76,32 +85,6 @@
 
   <footer>Plainwork &middot; a tool by Ksenia</footer>
 </div>
-
-<script>
-  async function buy() {
-    const btn = document.getElementById('buyBtn');
-    const errorMsg = document.getElementById('errorMsg');
-    btn.disabled = true;
-    btn.textContent = 'Preparing payment...';
-    errorMsg.style.display = 'none';
-
-    try {
-      const res = await fetch('/api/create-payment', { method: 'POST' });
-      const data = await res.json();
-
-      if (data.paymentUrl) {
-        window.location.href = data.paymentUrl;
-      } else {
-        throw new Error(data.error || 'Something went wrong');
-      }
-    } catch (err) {
-      errorMsg.textContent = 'Error: ' + err.message;
-      errorMsg.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Get instant access';
-    }
-  }
-</script>
 
 </body>
 </html>
