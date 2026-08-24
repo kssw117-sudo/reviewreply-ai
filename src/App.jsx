@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const FREE_TRIAL_LIMIT = 2;
+const FREE_TRIAL_LIMIT = 0;
 const DAILY_GEN_LIMIT = 50;
 const DAILY_GEN_KEY = 'rr_daily_gens';
 
@@ -506,22 +506,6 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
           </div>
 
           {error && <p className="text-sm" style={{ color: '#B34B3C' }}>{error}</p>}
-
-          {!unlocked && (
-            <div className="text-center">
-              <p className="text-xs" style={{ color: '#A56A45' }}>
-                {t.freeTriesLabel.replace('{n}', FREE_TRIAL_LIMIT - trialCount).replace('{word}', '')}
-              </p>
-              <button
-                type="button"
-                onClick={() => setTrialCount(FREE_TRIAL_LIMIT)}
-                className="text-xs underline mt-1"
-                style={{ color: '#87837A', background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                {t.haveCodeLabel}
-              </button>
-            </div>
-          )}
 
           <button
             onClick={handleGenerate}
