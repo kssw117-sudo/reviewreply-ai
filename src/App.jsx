@@ -9,6 +9,18 @@ function getTrialCount() {
   return stored ? parseInt(stored, 10) : 0;
 }
 
+function getDailyCount() {
+  const today = new Date().toISOString().slice(0, 10);
+  let record;
+  try {
+    record = JSON.parse(localStorage.getItem(DAILY_GEN_KEY) || 'null');
+  } catch (e) {
+    record = null;
+  }
+  if (!record || record.date !== today) return 0;
+  return record.count;
+}
+
 function checkAndUseDailyLimit() {
   const today = new Date().toISOString().slice(0, 10);
   let record;
@@ -29,6 +41,7 @@ function checkAndUseDailyLimit() {
 }
 
 export default function ReviewReplyAI() {
+  const [dailyCount, setDailyCount] = useState(() => getDailyCount());
   const [businessName, setBusinessName] = useState('');
   const [reviewText, setReviewText] = useState('');
   const [tone, setTone] = useState('warm');
@@ -112,9 +125,11 @@ export default function ReviewReplyAI() {
       return;
     }
     if (!checkAndUseDailyLimit()) {
+      setDailyCount(DAILY_GEN_LIMIT);
       setError(t.limitReached || 'Daily generation limit reached. Try again tomorrow.');
       return;
     }
+    setDailyCount(getDailyCount());
     setError('');
     setLoading(true);
     setResult(null);
@@ -253,9 +268,11 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
   async function handleGenerateSocialPost() {
     if (!result) return;
     if (!checkAndUseDailyLimit()) {
+      setDailyCount(DAILY_GEN_LIMIT);
       setError(t.limitReached || 'Daily generation limit reached. Try again tomorrow.');
       return;
     }
+    setDailyCount(getDailyCount());
     setSocialLoading(true);
     setSocialCopied(false);
 
@@ -298,9 +315,11 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
   async function handleGenerateFollowUp() {
     if (!result) return;
     if (!checkAndUseDailyLimit()) {
+      setDailyCount(DAILY_GEN_LIMIT);
       setError(t.limitReached || 'Daily generation limit reached. Try again tomorrow.');
       return;
     }
+    setDailyCount(getDailyCount());
     setFollowUpLoading(true);
     setFollowUpCopied(false);
 
@@ -625,6 +644,23 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
           </div>
         )}
 
+        <div style={{ maxWidth: 480, margin: '0 auto 16px' }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+            <span className="text-xs" style={{ color: '#87837A' }}>Today's free generations</span>
+            <span className="text-xs" style={{ color: '#87837A', fontWeight: 600 }}>{DAILY_GEN_LIMIT - dailyCount}/{DAILY_GEN_LIMIT} left</span>
+          </div>
+          <div style={{ height: 4, borderRadius: 999, background: '#E4E1D6', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 999, width: `${(dailyCount / DAILY_GEN_LIMIT) * 100}%`,
+              background: dailyCount >= DAILY_GEN_LIMIT ? '#B34B3C' : '#D97757',
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
+          {dailyCount >= DAILY_GEN_LIMIT && (
+            <p className="text-xs text-center" style={{ color: '#B34B3C', marginTop: 8 }}>Today's limit reached — come back tomorrow for 50 more free generations.</p>
+          )}
+        </div>
+
         <div className="flex flex-col items-center justify-center gap-1.5 mt-10 pt-6" style={{ borderTop: '1px solid #E4E1D6' }}>
           <div className="flex items-center gap-1.5">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#87837A" strokeWidth="1.5">
@@ -632,7 +668,6 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
             </svg>
             <span className="text-xs" style={{ color: '#87837A' }}>Powered by Claude &middot; Plainwork by Ksenia</span>
           </div>
-          <span className="text-xs" style={{ color: '#B5B0A3' }}>Fair use: up to 50 generations per day</span>
           <div className="mt-1">
             {!showSupportEmail ? (
               <button
