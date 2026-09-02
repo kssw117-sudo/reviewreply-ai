@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const FREE_TRIAL_LIMIT = 0;
+const FREE_TRIAL_LIMIT = 1;
 const DAILY_GEN_LIMIT = 50;
 const DAILY_GEN_KEY = 'rr_daily_gens';
 
@@ -366,57 +366,6 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
 
   const bodyFont = currentLang.rtl ? "'Cairo', sans-serif" : 'inherit';
 
-  if (!unlocked && trialCount >= FREE_TRIAL_LIMIT) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4" dir={currentLang.rtl ? 'rtl' : 'ltr'} style={{ background: '#F5F4EE', fontFamily: bodyFont }}>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Cairo:wght@400;700&display=swap');`}</style>
-        <div className="w-full max-w-sm rounded-xl p-6" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
-          <div className="flex justify-end mb-3">
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="text-xs rounded-lg px-2 py-1 focus:outline-none"
-              style={{ background: '#FAF9F4', border: '1px solid #E4E1D6', color: '#6B6659' }}
-            >
-              {languages.map(l => (
-                <option key={l.code} value={l.code}>{l.label}</option>
-              ))}
-            </select>
-          </div>
-          <h1
-            className="text-2xl mb-4"
-            style={{ fontFamily: currentLang.rtl ? "'Cairo', sans-serif" : "'Fraunces', serif", fontWeight: 600, color: '#2D2A26' }}
-          >
-            {t.licenseGateTitle}
-          </h1>
-          <input
-            type="text"
-            value={licenseCode}
-            onChange={(e) => setLicenseCode(e.target.value)}
-            placeholder={t.licensePh}
-            className="w-full rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none"
-            style={{ background: '#FAF9F4', border: '1px solid #E4E1D6', color: '#2D2A26' }}
-          />
-          {licenseError && <p className="text-sm mb-3" style={{ color: '#B34B3C' }}>{licenseError}</p>}
-          <button
-            onClick={handleUnlock}
-            className="w-full font-medium py-2.5 rounded-lg text-sm"
-            style={{ background: '#D97757', color: '#FFFFFF' }}
-          >
-            {t.unlockBtn}
-          </button>
-          <a
-            href="/buy.html"
-            className="block text-center text-xs mt-4"
-            style={{ color: '#A56A45' }}
-          >
-            {t.noCodeText}
-          </a>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen py-10 px-4 relative overflow-hidden" dir={currentLang.rtl ? 'rtl' : 'ltr'} style={{ background: '#F5F4EE', fontFamily: bodyFont }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Cairo:wght@400;700&display=swap');`}</style>
@@ -425,6 +374,37 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
       <div className="absolute rounded-full pointer-events-none" style={{ width: 240, height: 240, background: '#BD5D3A', filter: 'blur(90px)', opacity: 0.10, bottom: -60, right: -40 }} />
 
       <div className="max-w-xl mx-auto relative">
+        {!unlocked && (
+          <div className="rounded-lg p-3 mb-4" style={{ background: trialCount >= FREE_TRIAL_LIMIT ? '#FDECEC' : '#FDF3E8', border: `1px solid ${trialCount >= FREE_TRIAL_LIMIT ? '#F3C4C4' : '#F2D9B0'}` }}>
+            {trialCount >= FREE_TRIAL_LIMIT ? (
+              <>
+                <p className="text-sm" style={{ color: '#B34B3C', margin: 0, fontWeight: 600 }}>Free preview used</p>
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="text"
+                    value={licenseCode}
+                    onChange={(e) => setLicenseCode(e.target.value)}
+                    placeholder={t.licensePh}
+                    className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                    style={{ background: '#FFFFFF', border: '1px solid #E4E1D6', color: '#2D2A26' }}
+                  />
+                  <button
+                    onClick={handleUnlock}
+                    className="font-medium px-4 rounded-lg text-sm"
+                    style={{ background: '#D97757', color: '#FFFFFF' }}
+                  >
+                    {t.unlockBtn}
+                  </button>
+                </div>
+                {licenseError && <p className="text-sm mt-2" style={{ color: '#B34B3C' }}>{licenseError}</p>}
+                <a href="/buy.html" className="block text-xs mt-2" style={{ color: '#A56A45' }}>{t.noCodeText}</a>
+              </>
+            ) : (
+              <p className="text-sm" style={{ color: '#8A6B1A', margin: 0 }}>✨ Try it free — your first generation is on us. No code needed.</p>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2.5">
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
