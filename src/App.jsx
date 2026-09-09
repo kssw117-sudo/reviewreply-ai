@@ -678,6 +678,11 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
             </svg>
             <span className="text-xs" style={{ color: '#87837A' }}>Powered by Claude &middot; Plainwork by Ksenia</span>
           </div>
+          <div className="flex items-center gap-3 mt-1">
+            <a href="/terms.html" className="text-xs" style={{ color: '#A56A45' }}>Terms</a>
+            <a href="/privacy.html" className="text-xs" style={{ color: '#A56A45' }}>Privacy</a>
+            <a href="/refund.html" className="text-xs" style={{ color: '#A56A45' }}>Refunds</a>
+          </div>
           <div className="mt-1">
             {!showSupportEmail ? (
               <button
