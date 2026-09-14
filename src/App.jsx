@@ -66,7 +66,7 @@ export default function ReviewReplyAI() {
   const [unlocked, setUnlocked] = useState(() => localStorage.getItem('rr_unlocked') === 'true');
   const [licenseError, setLicenseError] = useState('');
   const [includeEmoji, setIncludeEmoji] = useState(true);
-  const [photo, setPhoto] = useState(null);
+  const [photos, setPhotos] = useState([]);
   const [trialCount, setTrialCount] = useState(getTrialCount());
   const [socialPost, setSocialPost] = useState(null);
   const [socialLoading, setSocialLoading] = useState(false);
@@ -78,8 +78,8 @@ export default function ReviewReplyAI() {
   // Восстанавливаем фото и все сгенерированные результаты при загрузке страницы
   useEffect(() => {
     try {
-      const savedPhoto = localStorage.getItem('rr_draft_photo');
-      if (savedPhoto) setPhoto(JSON.parse(savedPhoto));
+      const savedPhotos = localStorage.getItem('rr_draft_photos');
+      if (savedPhotos) setPhotos(JSON.parse(savedPhotos));
       const savedResult = localStorage.getItem('rr_draft_result');
       if (savedResult) setResult(JSON.parse(savedResult));
       const savedSocial = localStorage.getItem('rr_draft_socialPost');
@@ -93,14 +93,14 @@ export default function ReviewReplyAI() {
   useEffect(() => { localStorage.setItem('rr_draft_businessName', businessName); }, [businessName]);
   useEffect(() => { localStorage.setItem('rr_draft_reviewText', reviewText); }, [reviewText]);
 
-  // Сохраняем фото. Если оно слишком большое и localStorage переполнен —
+  // Сохраняем фото. Если они слишком большие и localStorage переполнен —
   // тихо не сохраняем черновик, само приложение продолжает работать нормально.
   useEffect(() => {
     try {
-      if (photo) localStorage.setItem('rr_draft_photo', JSON.stringify(photo));
-      else localStorage.removeItem('rr_draft_photo');
+      if (photos.length > 0) localStorage.setItem('rr_draft_photos', JSON.stringify(photos));
+      else localStorage.removeItem('rr_draft_photos');
     } catch (e) { /* превышена квота localStorage — пропускаем */ }
-  }, [photo]);
+  }, [photos]);
 
   // Сохраняем все сгенерированные результаты, чтобы не потерять их при
   // случайном закрытии вкладки или обновлении страницы
@@ -203,8 +203,8 @@ export default function ReviewReplyAI() {
       ? 'Include one relevant emoji per reply, used naturally, not excessively.'
       : 'Do not use any emojis.';
 
-    const photoInstruction = photo
-      ? 'A photo was attached to this review. Look at it carefully and reference something specific and true about what you actually see in the photo, if it adds something genuine to the reply -- do not force it if it does not fit naturally.'
+    const photoInstruction = photos.length > 0
+      ? `${photos.length > 1 ? photos.length + ' photos were' : 'A photo was'} attached to this review. Look at ${photos.length > 1 ? 'them' : 'it'} carefully and reference something specific and true about what you actually see, if it adds something genuine to the reply -- do not force it if it does not fit naturally.`
       : '';
 
     const promptText = `You are helping a small business owner named "${businessName}" reply to a customer review. Here is the review:
@@ -227,9 +227,9 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
 {"sentiment": "positive" or "negative" or "mixed", "replies": ["reply option 1", "reply option 2", "reply option 3"], "insight": "short internal note, or empty string", "subtext": "short tone note, or empty string"}`;
 
     let content = promptText;
-    if (photo) {
+    if (photos.length > 0) {
       content = [
-        { type: 'image', source: { type: 'base64', media_type: photo.mediaType, data: photo.base64 } },
+        ...photos.map(p => ({ type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.base64 } })),
         { type: 'text', text: promptText }
       ];
     }
@@ -271,14 +271,20 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
   }
 
   function handlePhotoUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1];
-      setPhoto({ preview: reader.result, base64, mediaType: file.type });
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files || []).slice(0, 3 - photos.length);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        setPhotos(prev => prev.length >= 3 ? prev : [...prev, { preview: reader.result, base64, mediaType: file.type }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  }
+
+  function removePhoto(index) {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
   }
 
   // Проверка кода: коды AppSumo начинаются с "REPLY-" и проверяются через
@@ -566,19 +572,36 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.photoLabel}</label>
-            <label
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm cursor-pointer"
-              style={{ background: '#FAF9F4', border: '1px dashed #E4E1D6', color: '#87837A' }}
-            >
-              {photo ? (
-                <img src={photo.preview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-              ) : (
-                <span style={{ width: 32, height: 32, borderRadius: 6, background: '#F1EFE6', flexShrink: 0 }} />
+            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.photoLabel} <span style={{ opacity: 0.6, fontWeight: 400 }}>({photos.length}/3)</span></label>
+            <div className="flex items-center gap-2 flex-wrap">
+              {photos.map((p, i) => (
+                <div key={i} style={{ position: 'relative', width: 56, height: 56 }}>
+                  <img src={p.preview} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover' }} />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(i)}
+                    aria-label="Remove photo"
+                    style={{
+                      position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%',
+                      background: '#C0574B', color: '#FFF', border: '2px solid #F5F4EE', fontSize: 11,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {photos.length < 3 && (
+                <label
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer"
+                  style={{ background: '#FAF9F4', border: '1px dashed #E4E1D6', color: '#87837A' }}
+                >
+                  <span style={{ width: 24, height: 24, borderRadius: 6, background: '#F1EFE6', flexShrink: 0 }} />
+                  <span>{t.uploadPhoto}</span>
+                  <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
+                </label>
               )}
-              <span>{photo ? t.changePhoto : t.uploadPhoto}</span>
-              <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-            </label>
+            </div>
           </div>
 
           <div className="flex items-center justify-between">
