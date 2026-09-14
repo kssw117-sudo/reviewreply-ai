@@ -1,5 +1,38 @@
 import React, { useState, useEffect } from 'react';
 
+// Маленький помощник для IndexedDB — используем для фото, т.к. до трёх
+// изображений в base64 легко превышают лимит localStorage (~5-10 МБ)
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('rr_drafts', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('files');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbGet(key) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readonly');
+      const req = tx.objectStore('files').get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) { return null; }
+}
+async function idbSet(key, value) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { /* тихо игнорируем — фото просто не сохранятся черновиком */ }
+}
+
 const FREE_TRIAL_LIMIT = 1;
 const DAILY_GEN_LIMIT = 50;
 const DAILY_GEN_KEY = 'rr_daily_gens';
@@ -78,8 +111,6 @@ export default function ReviewReplyAI() {
   // Восстанавливаем фото и все сгенерированные результаты при загрузке страницы
   useEffect(() => {
     try {
-      const savedPhotos = localStorage.getItem('rr_draft_photos');
-      if (savedPhotos) setPhotos(JSON.parse(savedPhotos));
       const savedResult = localStorage.getItem('rr_draft_result');
       if (savedResult) setResult(JSON.parse(savedResult));
       const savedSocial = localStorage.getItem('rr_draft_socialPost');
@@ -87,19 +118,17 @@ export default function ReviewReplyAI() {
       const savedFollowUp = localStorage.getItem('rr_draft_followUpMsg');
       if (savedFollowUp) setFollowUpMsg(JSON.parse(savedFollowUp));
     } catch (e) { /* повреждённые данные — просто игнорируем */ }
+    idbGet('photos').then(p => { if (p) setPhotos(p); });
   }, []);
 
   // Сохраняем текстовые поля при каждом изменении
   useEffect(() => { localStorage.setItem('rr_draft_businessName', businessName); }, [businessName]);
   useEffect(() => { localStorage.setItem('rr_draft_reviewText', reviewText); }, [reviewText]);
 
-  // Сохраняем фото. Если они слишком большие и localStorage переполнен —
-  // тихо не сохраняем черновик, само приложение продолжает работать нормально.
+  // Фото — в IndexedDB, там лимит намного больше, чем у localStorage
+  // (до трёх изображений в base64 легко превысят localStorage)
   useEffect(() => {
-    try {
-      if (photos.length > 0) localStorage.setItem('rr_draft_photos', JSON.stringify(photos));
-      else localStorage.removeItem('rr_draft_photos');
-    } catch (e) { /* превышена квота localStorage — пропускаем */ }
+    idbSet('photos', photos);
   }, [photos]);
 
   // Сохраняем все сгенерированные результаты, чтобы не потерять их при
