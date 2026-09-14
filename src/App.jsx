@@ -662,6 +662,21 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
 
         {result && (
           <div className="mt-6">
+            {photos.length > 0 && (
+              <div className="flex gap-2 mb-4" style={{ flexWrap: 'wrap' }}>
+                {photos.map((p, i) => (
+                  <img
+                    key={i}
+                    src={p.preview}
+                    alt=""
+                    style={{
+                      width: photos.length === 1 ? '100%' : `calc(${100 / Math.min(photos.length, 3)}% - 6px)`,
+                      aspectRatio: '1.6 / 1', borderRadius: 10, objectFit: 'cover',
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             <div className="flex items-center gap-2 mb-1.5">
               <span
                 className="text-xs font-semibold px-2 py-1 rounded-full"
