@@ -53,8 +53,8 @@ export default function ReviewReplyAI() {
     }
   }, []);
 
-  const [businessName, setBusinessName] = useState('');
-  const [reviewText, setReviewText] = useState('');
+  const [businessName, setBusinessName] = useState(() => localStorage.getItem('rr_draft_businessName') || '');
+  const [reviewText, setReviewText] = useState(() => localStorage.getItem('rr_draft_reviewText') || '');
   const [tone, setTone] = useState('warm');
   const [language, setLanguage] = useState('en');
   const [loading, setLoading] = useState(false);
@@ -74,6 +74,51 @@ export default function ReviewReplyAI() {
   const [followUpMsg, setFollowUpMsg] = useState(null);
   const [followUpLoading, setFollowUpLoading] = useState(false);
   const [followUpCopied, setFollowUpCopied] = useState(false);
+
+  // Восстанавливаем фото и все сгенерированные результаты при загрузке страницы
+  useEffect(() => {
+    try {
+      const savedPhoto = localStorage.getItem('rr_draft_photo');
+      if (savedPhoto) setPhoto(JSON.parse(savedPhoto));
+      const savedResult = localStorage.getItem('rr_draft_result');
+      if (savedResult) setResult(JSON.parse(savedResult));
+      const savedSocial = localStorage.getItem('rr_draft_socialPost');
+      if (savedSocial) setSocialPost(JSON.parse(savedSocial));
+      const savedFollowUp = localStorage.getItem('rr_draft_followUpMsg');
+      if (savedFollowUp) setFollowUpMsg(JSON.parse(savedFollowUp));
+    } catch (e) { /* повреждённые данные — просто игнорируем */ }
+  }, []);
+
+  // Сохраняем текстовые поля при каждом изменении
+  useEffect(() => { localStorage.setItem('rr_draft_businessName', businessName); }, [businessName]);
+  useEffect(() => { localStorage.setItem('rr_draft_reviewText', reviewText); }, [reviewText]);
+
+  // Сохраняем фото. Если оно слишком большое и localStorage переполнен —
+  // тихо не сохраняем черновик, само приложение продолжает работать нормально.
+  useEffect(() => {
+    try {
+      if (photo) localStorage.setItem('rr_draft_photo', JSON.stringify(photo));
+      else localStorage.removeItem('rr_draft_photo');
+    } catch (e) { /* превышена квота localStorage — пропускаем */ }
+  }, [photo]);
+
+  // Сохраняем все сгенерированные результаты, чтобы не потерять их при
+  // случайном закрытии вкладки или обновлении страницы
+  useEffect(() => {
+    try {
+      if (result) localStorage.setItem('rr_draft_result', JSON.stringify(result));
+    } catch (e) { /* превышена квота — пропускаем */ }
+  }, [result]);
+  useEffect(() => {
+    try {
+      if (socialPost) localStorage.setItem('rr_draft_socialPost', JSON.stringify(socialPost));
+    } catch (e) { /* превышена квота — пропускаем */ }
+  }, [socialPost]);
+  useEffect(() => {
+    try {
+      if (followUpMsg) localStorage.setItem('rr_draft_followUpMsg', JSON.stringify(followUpMsg));
+    } catch (e) { /* превышена квота — пропускаем */ }
+  }, [followUpMsg]);
 
   const languages = [
     { code: 'en', label: 'English', englishName: 'English', rtl: false },
@@ -353,12 +398,26 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
 
   return (
     <div className="min-h-screen py-10 px-4 relative overflow-hidden" dir={currentLang.rtl ? 'rtl' : 'ltr'} style={{ background: '#F5F4EE', fontFamily: bodyFont }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Cairo:wght@400;700&display=swap');`}</style>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Cairo:wght@400;700&display=swap');
+        @keyframes floatBubble { 0%, 100% { transform: translate(0, 0) rotate(-4deg); } 50% { transform: translate(12px, -18px) rotate(4deg); } }
+      `}</style>
 
       <div className="absolute rounded-full pointer-events-none" style={{ width: 280, height: 280, background: '#D97757', filter: 'blur(90px)', opacity: 0.10, top: -80, left: -60 }} />
       <div className="absolute rounded-full pointer-events-none" style={{ width: 240, height: 240, background: '#BD5D3A', filter: 'blur(90px)', opacity: 0.10, bottom: -60, right: -40 }} />
 
-      <div className="max-w-xl mx-auto relative">
+      {/* Плавающие значки речевого пузыря — декоративные, позади формы */}
+      <svg className="absolute pointer-events-none" style={{ top: '16%', left: '5%', width: 90, height: 90, opacity: 0.2, zIndex: 0, animation: 'floatBubble 10s ease-in-out infinite' }} viewBox="0 0 24 24" fill="none">
+        <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" fill="#D97757" />
+      </svg>
+      <svg className="absolute pointer-events-none" style={{ top: '60%', right: '6%', width: 64, height: 64, opacity: 0.2, zIndex: 0, animation: 'floatBubble 13s ease-in-out infinite', animationDelay: '-4s' }} viewBox="0 0 24 24" fill="none">
+        <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" fill="#BD5D3A" />
+      </svg>
+      <svg className="absolute pointer-events-none" style={{ top: '6%', right: '10%', width: 44, height: 44, opacity: 0.2, zIndex: 0, animation: 'floatBubble 8s ease-in-out infinite', animationDelay: '-2s' }} viewBox="0 0 24 24" fill="none">
+        <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" fill="#C0574B" />
+      </svg>
+
+      <div className="max-w-xl mx-auto relative" style={{ zIndex: 1 }}>
         {!unlocked && (
           <div className="rounded-lg p-3 mb-4" style={{ background: trialCount >= FREE_TRIAL_LIMIT ? '#FDECEC' : '#FDF3E8', border: `1px solid ${trialCount >= FREE_TRIAL_LIMIT ? '#F3C4C4' : '#F2D9B0'}` }}>
             {trialCount >= FREE_TRIAL_LIMIT ? (
