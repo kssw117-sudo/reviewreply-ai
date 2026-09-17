@@ -98,6 +98,26 @@ export default function ReviewReplyAI() {
   const [showSupportEmail, setShowSupportEmail] = useState(false);
   const [unlocked, setUnlocked] = useState(() => localStorage.getItem('rr_unlocked') === 'true');
   const [licenseError, setLicenseError] = useState('');
+  const [showHelpBubble, setShowHelpBubble] = useState(false);
+
+  // Лёгкий "поп"-звук для открытия/закрытия окошка подсказки
+  function playPopSound(opening) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(opening ? 520 : 380, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(opening ? 780 : 260, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch (e) { /* звук не критичен для работы приложения */ }
+  }
+
   const [includeEmoji, setIncludeEmoji] = useState(true);
   const [photos, setPhotos] = useState([]);
   const [trialCount, setTrialCount] = useState(getTrialCount());
@@ -434,7 +454,7 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
   return (
     <div className="min-h-screen py-10 px-4 relative overflow-hidden" dir={currentLang.rtl ? 'rtl' : 'ltr'} style={{ background: '#F5F4EE', fontFamily: bodyFont }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Cairo:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Playfair+Display:wght@500&family=Cairo:wght@400;700&display=swap');
         @keyframes floatBubble { 0%, 100% { transform: translate(0, 0) rotate(-4deg); } 50% { transform: translate(12px, -18px) rotate(4deg); } }
       `}</style>
 
@@ -553,7 +573,20 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
             ))}
           </select>
         </div>
-        <p className="text-sm mb-6" style={{ color: '#87837A' }}>{t.subtitle}</p>
+        <p className="text-sm mb-2" style={{ color: '#87837A' }}>{t.subtitle}</p>
+        <div className="rounded-lg overflow-hidden mb-4">
+          <img
+            src="/images/hero-rr.jpg"
+            alt="More than a reply, a read on what's really going on"
+            style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10 }}
+          />
+        </div>
+        <p style={{
+          margin: '0 0 24px', color: '#8A867B', fontFamily: "'Playfair Display', serif", fontStyle: 'normal',
+          fontWeight: 500, fontSize: 19, lineHeight: 1.4, letterSpacing: '0.01em',
+        }}>
+          More than a reply, a read on what's really going on
+        </p>
 
         <div className="rounded-xl p-5 space-y-4" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
           <div>
@@ -826,6 +859,38 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
           </div>
         </div>
       </div>
+
+      {/* Плавающая кнопка "как пользоваться" — в углу экрана */}
+      <button
+        onClick={() => {
+          playPopSound(!showHelpBubble);
+          setShowHelpBubble(v => !v);
+        }}
+        aria-label="How it works"
+        style={{
+          position: 'fixed', bottom: 20, right: 20, width: 48, height: 48, borderRadius: '50%',
+          background: 'linear-gradient(90deg, #D97757, #BD5D3A)', color: '#FFF', border: 'none',
+          cursor: 'pointer', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 4px 14px rgba(189,93,58,0.35)', zIndex: 50,
+        }}
+      >
+        {showHelpBubble ? '\u2715' : '?'}
+      </button>
+
+      {showHelpBubble && (
+        <div
+          style={{
+            position: 'fixed', bottom: 80, right: 20, width: 300, maxWidth: 'calc(100vw - 40px)',
+            background: '#FFF', borderRadius: 14, padding: 18, boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+            border: '1px solid #EDEAE0', zIndex: 50,
+          }}
+        >
+          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: '#2D2A26' }}>How ReviewReply AI works</p>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: '#5B564C' }}>
+            Paste a customer review. The AI reads it, checks the tone, and drafts three reply options, plus a private note only you see. Attach up to 3 photos for extra context. Turn a great review into a social post in one click.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
