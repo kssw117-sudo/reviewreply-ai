@@ -99,6 +99,28 @@ export default function ReviewReplyAI() {
   const [unlocked, setUnlocked] = useState(() => localStorage.getItem('rr_unlocked') === 'true');
   const [licenseError, setLicenseError] = useState('');
   const [showHelpBubble, setShowHelpBubble] = useState(false);
+  const [openFaq, setOpenFaq] = useState(null);
+  const [factIdx, setFactIdx] = useState(0);
+
+  const LIVE_FACTS = [
+    { text: 'Just generated: 3 reply options in 4 seconds', stars: 5 },
+    { text: 'Every reply comes with a private note only you see', stars: 5 },
+    { text: 'Works with reviews from any platform — Google, Yelp, anywhere', stars: 5 },
+    { text: 'Handles a 1-star review just as carefully', stars: 1 },
+    { text: 'Each reply matches your tone — friendly, formal, or brief', stars: 5 },
+    { text: 'Just replied to a 3-star review in 4 seconds', stars: 3 },
+    { text: 'Picks up on the specific details in each review', stars: 5 },
+    { text: 'Never sends the same reply twice', stars: 5 },
+    { text: 'Reads the whole review, not just the star rating', stars: 4 },
+    { text: 'Just turned a tricky 2-star review into a calm, professional reply', stars: 2 },
+  ];
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setFactIdx(i => (i + 1) % LIVE_FACTS.length);
+    }, 3200);
+    return () => clearInterval(id);
+  }, []);
 
   // Лёгкий "поп"-звук для открытия/закрытия окошка подсказки
   function playPopSound(opening) {
@@ -828,6 +850,84 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
           {dailyCount >= DAILY_GEN_LIMIT && (
             <p className="text-xs text-center" style={{ color: '#B34B3C', marginTop: 8 }}>Today's limit reached — come back tomorrow for 50 more free generations.</p>
           )}
+        </div>
+
+        {/* ----- FAQ ----- */}
+        <div className="mt-14 pt-10" style={{ borderTop: '1px solid #E4E1D6' }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#2D2A26', textAlign: 'center', margin: '0 0 6px' }}>
+            Frequently asked questions, answered.
+          </h2>
+          <p style={{ fontSize: 13.5, color: '#87837A', textAlign: 'center', margin: '0 0 28px' }}>
+            Everything people usually ask before trying ReviewReply AI.
+          </p>
+          <div className="mx-auto" style={{ maxWidth: 640 }}>
+            {[
+              {
+                q: 'Does this work for Google, Yelp, TripAdvisor, or just one platform?',
+                a: 'Paste a review from anywhere — Google, Yelp, TripAdvisor, Facebook, Amazon, app stores. ReviewReply AI reads the text you give it, it doesn’t need to be connected to any specific platform.',
+              },
+              {
+                q: 'Does it post the reply for me?',
+                a: 'No — it drafts three reply options and you copy the one you like onto the platform yourself. This keeps you in control of what actually goes out under your business’s name.',
+              },
+              {
+                q: 'Will the replies sound like a robot wrote them?',
+                a: 'The AI matches the tone of the original review and gives you three different options — different lengths and registers — so you can pick the one that sounds like you, not a template.',
+              },
+              {
+                q: 'What’s the private note I keep hearing about?',
+                a: 'With every reply, you also get a note only you see — it flags if the review is quietly pointing at a bigger pattern, like a recurring complaint about wait times or a training gap.',
+              },
+              {
+                q: 'What happens after my free preview?',
+                a: 'You get one free reply to try it out, plus 50 free generations every day after that. Buying a license ($79, one time, no subscription) removes the daily cap for good.',
+              },
+            ].map((item, i) => (
+              <div key={i} style={{ borderBottom: '1px solid #E4E1D6' }}>
+                <button
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  style={{
+                    width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                  }}
+                >
+                  <span style={{ fontSize: 14.5, fontWeight: 600, color: '#2D2A26' }}>{item.q}</span>
+                  <span style={{
+                    flexShrink: 0, fontSize: 18, color: '#A56A45', transform: openFaq === i ? 'rotate(45deg)' : 'none',
+                    transition: 'transform 0.2s ease',
+                  }}>+</span>
+                </button>
+                {openFaq === i && (
+                  <p style={{ fontSize: 13.5, color: '#5B564C', lineHeight: 1.6, margin: '0 4px 18px' }}>{item.a}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ----- LIVE FACTS TICKER ----- */}
+        <div className="mt-14 mx-auto" style={{
+          maxWidth: 640, borderRadius: 16, padding: '22px 28px',
+          background: 'linear-gradient(135deg, #FBEFE8, #F5F4EE)', border: '1px solid #EDD9C8',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, minHeight: 60,
+        }}>
+          <span key={`stars-${factIdx}`} style={{ fontSize: 15, flexShrink: 0, animation: 'factFadeIn 0.5s ease' }}>
+            {Array.from({ length: 5 }).map((_, s) => (
+              <span key={s} style={{ color: s < LIVE_FACTS[factIdx].stars ? '#D97757' : '#E4DCD2' }}>&#9733;</span>
+            ))}
+          </span>
+          <span key={factIdx} style={{
+            fontSize: 14, fontWeight: 600, color: '#2D2A26', textAlign: 'center',
+            animation: 'factFadeIn 0.5s ease',
+          }}>
+            {LIVE_FACTS[factIdx].text}
+          </span>
+          <style>{`
+            @keyframes factFadeIn {
+              from { opacity: 0; transform: translateY(6px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
         </div>
 
         <div className="flex flex-col items-center justify-center gap-1.5 mt-10 pt-6" style={{ borderTop: '1px solid #E4E1D6' }}>
