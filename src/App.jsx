@@ -605,7 +605,7 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
         </div>
         <p style={{
           margin: '0 0 24px', color: '#8A867B', fontFamily: "'Playfair Display', serif", fontStyle: 'normal',
-          fontWeight: 500, fontSize: 19, lineHeight: 1.4, letterSpacing: '0.01em',
+          fontWeight: 500, fontSize: 19, lineHeight: 1.4, letterSpacing: '0.01em', textAlign: 'center',
         }}>
           More than a reply, a read on what's really going on
         </p>
