@@ -101,6 +101,8 @@ export default function ReviewReplyAI() {
   const [showHelpBubble, setShowHelpBubble] = useState(false);
   const [openFaq, setOpenFaq] = useState(null);
   const [factIdx, setFactIdx] = useState(0);
+  const [rateStars, setRateStars] = useState(0);
+  const [rateProblem, setRateProblem] = useState('');
 
   const LIVE_FACTS = [
     { text: 'Just generated: 3 reply options in 4 seconds', stars: 5 },
@@ -513,7 +515,7 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-center gap-2.5">
                 <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: '50%', background: '#D97757', display: 'inline-block' }} />
                 <p className="text-sm" style={{ color: '#8A6B1A', margin: 0 }}>Try it free — your first generation is on us. No code needed.</p>
               </div>
@@ -571,8 +573,9 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2.5">
+        <div className="mb-2" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8 }}>
+          <div />
+          <div className="flex items-center justify-center gap-2.5">
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
               <path d="M4 4h16v11H8l-4 4V4z" stroke="#D97757" strokeWidth="1.6" strokeLinejoin="round" />
               <path d="M8 9h2M8 11.5h5" stroke="#D97757" strokeWidth="1.6" strokeLinecap="round" />
@@ -584,21 +587,23 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
               {t.title}
             </h1>
           </div>
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="text-xs rounded-lg px-2 py-1.5 focus:outline-none"
-            style={{ background: '#FFFFFF', border: '1px solid #E4E1D6', color: '#6B6659' }}
-          >
-            {languages.map(l => (
-              <option key={l.code} value={l.code}>{l.label}</option>
-            ))}
-          </select>
+          <div className="flex justify-end">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="text-xs rounded-lg px-2 py-1.5 focus:outline-none"
+              style={{ background: '#FFFFFF', border: '1px solid #E4E1D6', color: '#6B6659' }}
+            >
+              {languages.map(l => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <p className="text-sm mb-2" style={{ color: '#87837A' }}>{t.subtitle}</p>
+        <p className="text-sm mb-2" style={{ color: '#87837A', textAlign: 'center' }}>{t.subtitle}</p>
         <div className="rounded-lg overflow-hidden mb-4">
           <img
-            src="/images/hero-rr.jpg"
+            src="/images/hero-rr.png"
             alt="More than a reply, a read on what's really going on"
             style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10 }}
           />
@@ -928,6 +933,60 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
               to { opacity: 1; transform: translateY(0); }
             }
           `}</style>
+        </div>
+
+        <div className="mt-8" style={{ maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>
+          {rateStars === 0 ? (
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-sm font-medium" style={{ color: '#2D2A26' }}>How's ReviewReply AI working for you?</span>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setRateStars(n)}
+                    aria-label={`Rate ${n} star`}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3 }}
+                  >
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#D97757" strokeWidth="1.6">
+                      <path d="M12 2.5l2.9 6.4 6.9.7-5.2 4.8 1.5 6.9-6.1-3.6-6.1 3.6 1.5-6.9-5.2-4.8 6.9-.7z" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : rateStars >= 4 ? (
+            <div className="flex flex-col items-center gap-2 text-center">
+              <span className="text-sm" style={{ color: '#2D2A26' }}>Thank you! That means a lot.</span>
+              <a
+                href="https://plainwork.website/#rate-us"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium"
+                style={{ color: '#A56A45' }}
+              >
+                Rate us on Plainwork &rarr;
+              </a>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <span className="text-sm text-center" style={{ color: '#2D2A26' }}>Sorry to hear that &mdash; what went wrong?</span>
+              <textarea
+                value={rateProblem}
+                onChange={(e) => setRateProblem(e.target.value)}
+                placeholder="Describe the issue..."
+                rows={3}
+                className="w-full rounded-lg p-2 text-sm"
+                style={{ border: '1px solid #E4E1D6', resize: 'vertical', fontFamily: 'inherit' }}
+              />
+              <a
+                href={`mailto:kssw117@gmail.com?subject=${encodeURIComponent('ReviewReply AI feedback')}&body=${encodeURIComponent(rateProblem)}`}
+                className="text-sm font-medium text-center"
+                style={{ color: '#FFFFFF', background: '#D97757', borderRadius: 999, padding: '8px 0', textDecoration: 'none' }}
+              >
+                Send feedback
+              </a>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col items-center justify-center gap-1.5 mt-10 pt-6" style={{ borderTop: '1px solid #E4E1D6' }}>
