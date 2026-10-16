@@ -603,7 +603,7 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
         <p className="text-sm mb-2" style={{ color: '#87837A', textAlign: 'center' }}>{t.subtitle}</p>
         <div className="rounded-lg overflow-hidden mb-4">
           <img
-            src="/images/hero-rr.png"
+            src="/images/hero-rr.jpg"
             alt="More than a reply, a read on what's really going on"
             style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10 }}
           />
