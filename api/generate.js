@@ -22,8 +22,9 @@ const __require = createRequire(import.meta.url);
 
 const GUARD = { product: 'rr', daily: 50, trialMax: 3 };
 const TRIAL_TTL = 30 * 24 * 3600;
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN;
+// Подходят оба варианта названий: с префиксом UPSTASH_REDIS_REST и без него.
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL || process.env.KV_REST_API_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN;
 
 async function redis(commands) {
   const r = await fetch(`${REDIS_URL}/pipeline`, {
