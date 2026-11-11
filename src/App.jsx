@@ -1,180 +1,1080 @@
-// api/generate.js
-// Принимает три случая:
-// 1. Общий код с Getly, хранится в переменной окружения ACCESS_CODE
-// 2. Уникальные AppSumo-коды вида REPLY-XXXX-XXXX (сами коды проверяются
-//    и гасятся отдельной функцией /api/redeem-appsumo при разблокировке;
-//    здесь просто пропускаем любой код с этим префиксом)
-// 3. Бесплатный пробный период (trial: true) — без кода вообще
-// ===================================================================
-// Защита доступа и лимитов -- на сервере, очисткой кэша не обходится.
-// - Код доступа проверяется: общий (ACCESS_CODE) или уникальный из списка
-//   ../appsumo/codes.json (выдуманный код не пройдёт).
-// - Пробные генерации: 3 на IP-адрес на 30 дней.
-// - Лимит: 50 генераций в день на уникальный код; для общего кода --
-//   50 в день на каждый IP-адрес (покупатели не делят один лимит).
-// - Неудачная генерация не списывается.
-// - Лимиты работают, когда к проекту подключена база Upstash Redis
-//   (переменные UPSTASH_REDIS_REST_KV_REST_API_URL / _TOKEN). Без неё
-//   проверка кода всё равно работает, а лимиты просто не считаются.
-// ===================================================================
-import { createRequire } from 'module';
-const __require = createRequire(import.meta.url);
+import React, { useState, useEffect } from 'react';
 
-const GUARD = { product: 'rr', daily: 50, trialMax: 3 };
-const TRIAL_TTL = 30 * 24 * 3600;
-// Подходят оба варианта названий: с префиксом UPSTASH_REDIS_REST и без него.
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL || process.env.KV_REST_API_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN;
+// Ответ сервера о пробной попытке или дневном лимите (считаются на сервере).
+function guardError(data) {
+  if (data && (data.code === 'trial_used' || data.code === 'limit_reached')) {
+    const e = new Error(data.error || data.code);
+    e.guardMessage = data.error;
+    e.guardCode = data.code;
+    return e;
+  }
+  return null;
+}
 
-async function redis(commands) {
-  const r = await fetch(`${REDIS_URL}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(commands)
+
+// Маленький помощник для IndexedDB — используем для фото, т.к. до трёх
+// изображений в base64 легко превышают лимит localStorage (~5-10 МБ)
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('rr_drafts', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('files');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
   });
-  if (!r.ok) throw new Error(`redis http ${r.status}`);
-  const data = await r.json();
-  return data.map(item => { if (item.error) throw new Error(item.error); return item.result; });
 }
-
-let codeSet = null;
-function knownCodes() {
-  if (codeSet) return codeSet;
+async function idbGet(key) {
   try {
-    const list = __require('../appsumo/codes.json');
-    const arr = Array.isArray(list) ? list : Object.values(list).flat();
-    codeSet = new Set(arr.map(c => String(c && typeof c === 'object' ? c.code : c).trim().toUpperCase()));
-  } catch (e) {
-    console.error('Could not load codes list:', e.message);
-    codeSet = new Set();
-  }
-  return codeSet;
-}
-
-function clientIp(req) {
-  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  return fwd || String(req.headers['x-real-ip'] || '') || 'unknown';
-}
-
-// Счётчик с лимитом: +1, если превышен -- откат. Возвращает { ok, used, refund }.
-async function takeOne(key, max, ttl) {
-  const [n] = await redis([['INCR', key]]);
-  if (n === 1) await redis([['EXPIRE', key, ttl]]);
-  if (n > max) {
-    await redis([['DECR', key]]);
-    return { ok: false, used: max };
-  }
-  return { ok: true, used: n, refund: async () => { try { await redis([['DECR', key]]); } catch (e) {} } };
-}
-
-const noRefund = async () => {};
-
-async function guard(req, licenseCode, wantsTrial) {
-  const code = typeof licenseCode === 'string' ? licenseCode.trim().toUpperCase() : '';
-  const sharedCode = String(process.env.ACCESS_CODE || '').trim().toUpperCase();
-  const shared = Boolean(code) && Boolean(sharedCode) && code === sharedCode;
-  const unique = !shared && Boolean(code) && knownCodes().has(code);
-  const redisOn = Boolean(REDIS_URL && REDIS_TOKEN);
-  const ip = clientIp(req);
-  const p = GUARD.product;
-
-  if (!shared && !unique) {
-    if (code || !wantsTrial) {
-      return { ok: false, status: 403, body: { error: 'Invalid access code.', code: 'invalid_code' } };
-    }
-    if (!redisOn) return { ok: true, refund: noRefund };
-    try {
-      const t = await takeOne(`${p}:trial:${ip}`, GUARD.trialMax, TRIAL_TTL);
-      if (!t.ok) {
-        return { ok: false, status: 403, body: { error: 'Your free preview is used. Enter your access code to continue.', code: 'trial_used' } };
-      }
-      return { ok: true, refund: t.refund };
-    } catch (e) {
-      console.error('Trial check failed, allowing request:', e.message);
-      return { ok: true, refund: noRefund };
-    }
-  }
-
-  if (!redisOn) return { ok: true, refund: noRefund };
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    const who = shared ? `shared:${ip}` : code;
-    const l = await takeOne(`${p}:limit:${who}:${today}`, GUARD.daily, 93600);
-    if (!l.ok) {
-      return { ok: false, status: 429, body: { error: `Daily limit of ${GUARD.daily} generations reached. Come back tomorrow.`, code: 'limit_reached' } };
-    }
-    return { ok: true, refund: l.refund };
-  } catch (e) {
-    console.error('Limit check failed, allowing request:', e.message);
-    return { ok: true, refund: noRefund };
-  }
-}
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return innerHandler(req, res);
-  const body = req.body || {};
-  const g = await guard(req, body.licenseCode, body.trial === true);
-  if (!g.ok) return res.status(g.status).json(g.body);
-
-  // Если генерация не удалась (ответ с ошибкой) -- возвращаем списанное.
-  let status = 200;
-  const origStatus = res.status.bind(res);
-  res.status = (s) => { status = s; return origStatus(s); };
-  try {
-    const out = await innerHandler(req, res);
-    if (status >= 400) await g.refund();
-    return out;
-  } catch (e) {
-    await g.refund();
-    throw e;
-  }
-}
-// ============================ конец защиты ============================
-
-
-async function innerHandler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { licenseCode, content, trial } = req.body;
-
-  const isSharedCode = licenseCode && licenseCode === process.env.ACCESS_CODE;
-  const isAppSumoCode = licenseCode && licenseCode.trim().toUpperCase().startsWith('REPLY-');
-  const hasValidCode = isSharedCode || isAppSumoCode;
-
-  // Код доступа и лимиты уже проверены в handler (см. защиту выше).
-
-  if (!content) {
-    return res.status(400).json({ error: 'No content provided' });
-  }
-
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1200,
-        messages: [{ role: 'user', content }]
-      })
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readonly');
+      const req = tx.objectStore('files').get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
     });
+  } catch (e) { return null; }
+}
+async function idbSet(key, value) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { /* тихо игнорируем — фото просто не сохранятся черновиком */ }
+}
 
-    const data = await response.json();
+const FREE_TRIAL_LIMIT = 1;
+const DAILY_GEN_LIMIT = 50;
+const DAILY_GEN_KEY = 'rr_daily_gens';
 
-    if (!response.ok) {
+function getTrialCount() {
+  const stored = localStorage.getItem('reviewreply_trial_count');
+  return stored ? parseInt(stored, 10) : 0;
+}
 
-      console.error('Anthropic error:', response.status);
-
-      return res.status(502).json({ error: 'Generation failed. Please try again.' });
-
-    }
-    return res.status(200).json(data);
-  } catch (err) {
-    return res.status(500).json({ error: 'Error contacting AI' });
+function getDailyCount() {
+  const today = new Date().toISOString().slice(0, 10);
+  let record;
+  try {
+    record = JSON.parse(localStorage.getItem(DAILY_GEN_KEY) || 'null');
+  } catch (e) {
+    record = null;
   }
+  if (!record || record.date !== today) return 0;
+  return record.count;
+}
+
+function checkAndUseDailyLimit() {
+  const today = new Date().toISOString().slice(0, 10);
+  let record;
+  try {
+    record = JSON.parse(localStorage.getItem(DAILY_GEN_KEY) || 'null');
+  } catch (e) {
+    record = null;
+  }
+  if (!record || record.date !== today) {
+    record = { date: today, count: 0 };
+  }
+  if (record.count >= DAILY_GEN_LIMIT) {
+    return false;
+  }
+  record.count += 1;
+  localStorage.setItem(DAILY_GEN_KEY, JSON.stringify(record));
+  return true;
+}
+
+export default function ReviewReplyAI() {
+  const [dailyCount, setDailyCount] = useState(() => getDailyCount());
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  useEffect(() => {
+    if (window.location.search.includes('welcome=1')) {
+      setShowWelcome(true);
+      window.history.replaceState({}, '', window.location.pathname);
+      const timer = setTimeout(() => setShowWelcome(false), 3800);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const [businessName, setBusinessName] = useState(() => localStorage.getItem('rr_draft_businessName') || '');
+  const [reviewText, setReviewText] = useState(() => localStorage.getItem('rr_draft_reviewText') || '');
+  const [tone, setTone] = useState('warm');
+  const [language, setLanguage] = useState('en');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  const [copiedIdx, setCopiedIdx] = useState(null);
+  const [licenseCode, setLicenseCode] = useState(() => localStorage.getItem('rr_licenseCode') || '');
+  const [showSupportEmail, setShowSupportEmail] = useState(false);
+  const [unlocked, setUnlocked] = useState(() => localStorage.getItem('rr_unlocked') === 'true');
+  const [licenseError, setLicenseError] = useState('');
+  const [showHelpBubble, setShowHelpBubble] = useState(false);
+  const [openFaq, setOpenFaq] = useState(null);
+  const [factIdx, setFactIdx] = useState(0);
+  const [rateStars, setRateStars] = useState(0);
+  const [rateProblem, setRateProblem] = useState('');
+
+  const LIVE_FACTS = [
+    { text: 'Just generated: 3 reply options in 4 seconds', stars: 5 },
+    { text: 'Every reply comes with a private note only you see', stars: 5 },
+    { text: 'Works with reviews from any platform — Google, Yelp, anywhere', stars: 5 },
+    { text: 'Handles a 1-star review just as carefully', stars: 1 },
+    { text: 'Each reply matches your tone — friendly, formal, or brief', stars: 5 },
+    { text: 'Just replied to a 3-star review in 4 seconds', stars: 3 },
+    { text: 'Picks up on the specific details in each review', stars: 5 },
+    { text: 'Never sends the same reply twice', stars: 5 },
+    { text: 'Reads the whole review, not just the star rating', stars: 4 },
+    { text: 'Just turned a tricky 2-star review into a calm, professional reply', stars: 2 },
+  ];
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setFactIdx(i => (i + 1) % LIVE_FACTS.length);
+    }, 3200);
+    return () => clearInterval(id);
+  }, []);
+
+  // Лёгкий "поп"-звук для открытия/закрытия окошка подсказки
+  function playPopSound(opening) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(opening ? 520 : 380, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(opening ? 780 : 260, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch (e) { /* звук не критичен для работы приложения */ }
+  }
+
+  const [includeEmoji, setIncludeEmoji] = useState(true);
+  const [photos, setPhotos] = useState([]);
+  const [trialCount, setTrialCount] = useState(getTrialCount());
+  const [socialPost, setSocialPost] = useState(null);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [socialCopied, setSocialCopied] = useState(false);
+  const [followUpMsg, setFollowUpMsg] = useState(null);
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [followUpCopied, setFollowUpCopied] = useState(false);
+
+  // Восстанавливаем фото и все сгенерированные результаты при загрузке страницы
+  useEffect(() => {
+    try {
+      const savedResult = localStorage.getItem('rr_draft_result');
+      if (savedResult) setResult(JSON.parse(savedResult));
+      const savedSocial = localStorage.getItem('rr_draft_socialPost');
+      if (savedSocial) setSocialPost(JSON.parse(savedSocial));
+      const savedFollowUp = localStorage.getItem('rr_draft_followUpMsg');
+      if (savedFollowUp) setFollowUpMsg(JSON.parse(savedFollowUp));
+    } catch (e) { /* повреждённые данные — просто игнорируем */ }
+    idbGet('photos').then(p => { if (p) setPhotos(p); });
+  }, []);
+
+  // Сохраняем текстовые поля при каждом изменении
+  useEffect(() => { localStorage.setItem('rr_draft_businessName', businessName); }, [businessName]);
+  useEffect(() => { localStorage.setItem('rr_draft_reviewText', reviewText); }, [reviewText]);
+
+  // Фото — в IndexedDB, там лимит намного больше, чем у localStorage
+  // (до трёх изображений в base64 легко превысят localStorage)
+  useEffect(() => {
+    idbSet('photos', photos);
+  }, [photos]);
+
+  // Сохраняем все сгенерированные результаты, чтобы не потерять их при
+  // случайном закрытии вкладки или обновлении страницы
+  useEffect(() => {
+    try {
+      if (result) localStorage.setItem('rr_draft_result', JSON.stringify(result));
+    } catch (e) { /* превышена квота — пропускаем */ }
+  }, [result]);
+  useEffect(() => {
+    try {
+      if (socialPost) localStorage.setItem('rr_draft_socialPost', JSON.stringify(socialPost));
+    } catch (e) { /* превышена квота — пропускаем */ }
+  }, [socialPost]);
+  useEffect(() => {
+    try {
+      if (followUpMsg) localStorage.setItem('rr_draft_followUpMsg', JSON.stringify(followUpMsg));
+    } catch (e) { /* превышена квота — пропускаем */ }
+  }, [followUpMsg]);
+
+  const languages = [
+    { code: 'en', label: 'English', englishName: 'English', rtl: false },
+    { code: 'ru', label: 'Русский', englishName: 'Russian', rtl: false },
+    { code: 'ar', label: 'العربية', englishName: 'Arabic', rtl: true },
+    { code: 'fa', label: 'فارسی', englishName: 'Persian', rtl: true },
+    { code: 'es', label: 'Español', englishName: 'Spanish', rtl: false },
+    { code: 'fr', label: 'Français', englishName: 'French', rtl: false },
+    { code: 'de', label: 'Deutsch', englishName: 'German', rtl: false },
+    { code: 'it', label: 'Italiano', englishName: 'Italian', rtl: false },
+    { code: 'pt', label: 'Português', englishName: 'Portuguese', rtl: false },
+    { code: 'tr', label: 'Türkçe', englishName: 'Turkish', rtl: false },
+    { code: 'zh', label: '中文', englishName: 'Chinese', rtl: false },
+    { code: 'hi', label: 'हिन्दी', englishName: 'Hindi', rtl: false },
+    { code: 'ja', label: '日本語', englishName: 'Japanese', rtl: false },
+    { code: 'sv', label: 'Svenska', englishName: 'Swedish', rtl: false },
+    { code: 'no', label: 'Norsk', englishName: 'Norwegian', rtl: false },
+    { code: 'da', label: 'Dansk', englishName: 'Danish', rtl: false },
+    { code: 'fi', label: 'Suomi', englishName: 'Finnish', rtl: false },
+    { code: 'uk', label: 'Українська', englishName: 'Ukrainian', rtl: false },
+    { code: 'be', label: 'Беларуская', englishName: 'Belarusian', rtl: false },
+    { code: 'el', label: 'Ελληνικά', englishName: 'Greek', rtl: false },
+  ];
+
+  const ui = {
+    en: { title: 'ReviewReply AI', subtitle: 'Paste any customer review, get thoughtful replies in seconds.', businessLabel: 'Your business name', businessPh: 'e.g. Morning Coffee Shop', reviewLabel: "Paste the customer's review", reviewPh: 'e.g. Loved the coffee but service was slow on Saturday...', toneLabel: 'Reply tone', toneWarm: 'Warm', toneProfessional: 'Professional', toneBrief: 'Short', languageLabel: 'Interface language', generateBtn: 'Generate replies', generatingBtn: 'Writing replies...', fillError: 'Please fill in your business name and paste the review.', genError: 'Could not generate. Please try again.', limitReached: 'Daily generation limit reached. Try again tomorrow.', positiveLabel: 'Positive review', negativeLabel: 'Negative review', mixedLabel: 'Mixed review', copyBtn: 'Copy', copiedBtn: 'Copied!', repliesHeading: 'Reply options' , licenseGateTitle: 'Enter your access code', licensePh: 'Access code', unlockBtn: 'Unlock', licenseInvalid: 'Invalid or inactive code', photoLabel: 'Attach a photo (optional)', uploadPhoto: 'Add photo', changePhoto: 'Change photo', emojiToggle: 'Emoji', noCodeText: 'No code? Buy access', freeTriesLabel: '{n} free {word} left -- no code needed', trialExhausted: "You've used your free replies. Enter a code, or buy access to keep going.", subtextLabel: 'Reading between the lines', socialBtnLabel: 'Turn into a social media post', socialHeading: 'Ready-to-post caption', socialGeneratingBtn: 'Writing caption...', followUpBtnLabel: 'Draft a private follow-up message', followUpHeading: 'Private message to the customer', followUpGeneratingBtn: 'Writing message...', haveCodeLabel: 'Already have a code?'},
+    ru: { title: 'ReviewReply AI', subtitle: 'Вставьте отзыв клиента — получите готовые варианты ответа за секунды.', businessLabel: 'Название бизнеса', businessPh: 'Например: кофейня «Утро»', reviewLabel: 'Вставьте отзыв клиента', reviewPh: 'Например: кофе понравился, но обслуживание было медленным в субботу...', toneLabel: 'Тон ответа', toneWarm: 'Тёплый', toneProfessional: 'Деловой', toneBrief: 'Короткий', languageLabel: 'Язык интерфейса', generateBtn: 'Сгенерировать ответы', generatingBtn: 'Пишу ответы...', fillError: 'Заполните название бизнеса и вставьте отзыв.', genError: 'Не удалось сгенерировать. Попробуйте ещё раз.', limitReached: 'Достигнут дневной лимит генераций. Попробуйте завтра.', positiveLabel: 'Положительный отзыв', negativeLabel: 'Отрицательный отзыв', mixedLabel: 'Смешанный отзыв', copyBtn: 'Копировать', copiedBtn: 'Скопировано!', repliesHeading: 'Варианты ответа' , licenseGateTitle: 'Введите код доступа', licensePh: 'Код доступа', unlockBtn: 'Разблокировать', licenseInvalid: 'Неверный или неактивный код', photoLabel: 'Прикрепить фото (необязательно)', uploadPhoto: 'Загрузить фото', changePhoto: 'Сменить фото', emojiToggle: 'Эмодзи', noCodeText: 'Нет кода? Купить доступ', freeTriesLabel: 'Осталось {n} бесплатных попыток -- код не нужен', trialExhausted: 'Бесплатные попытки закончились. Введите код или купите доступ, чтобы продолжить.', subtextLabel: 'Между строк', socialBtnLabel: 'Превратить в пост для соцсетей', socialHeading: 'Готовая подпись для поста', socialGeneratingBtn: 'Пишу подпись...', followUpBtnLabel: 'Составить личное сообщение', followUpHeading: 'Личное сообщение клиенту', followUpGeneratingBtn: 'Пишу сообщение...', haveCodeLabel: 'Уже есть код?'},
+    ar: { title: 'ReviewReply AI', subtitle: 'الصق أي تقييم من العميل واحصل على ردود مدروسة خلال ثوانٍ.', businessLabel: 'اسم نشاطك التجاري', businessPh: 'مثال: مقهى الصباح', reviewLabel: 'الصق تقييم العميل', reviewPh: 'مثال: أحببت القهوة لكن الخدمة كانت بطيئة يوم السبت...', toneLabel: 'نبرة الرد', toneWarm: 'ودود', toneProfessional: 'احترافي', toneBrief: 'مختصر', languageLabel: 'لغة الواجهة', generateBtn: 'إنشاء الردود', generatingBtn: 'جارٍ كتابة الردود...', fillError: 'يرجى إدخال اسم النشاط ولصق التقييم.', genError: 'تعذر الإنشاء. حاول مرة أخرى.', positiveLabel: 'تقييم إيجابي', negativeLabel: 'تقييم سلبي', mixedLabel: 'تقييم مختلط', copyBtn: 'نسخ', copiedBtn: 'تم النسخ!', repliesHeading: 'خيارات الرد' , licenseGateTitle: 'أدخل رمز الوصول', licensePh: 'رمز الوصول', unlockBtn: 'فتح', licenseInvalid: 'رمز غير صالح أو غير مفعّل', photoLabel: 'إرفاق صورة (اختياري)', uploadPhoto: 'رفع صورة', changePhoto: 'تغيير الصورة', emojiToggle: 'الرموز التعبيرية', noCodeText: 'لا يوجد رمز؟ شراء الوصول', freeTriesLabel: 'متبقٍ {n} محاولة مجانية -- لا حاجة لرمز', trialExhausted: 'لقد استخدمت محاولاتك المجانية. أدخل رمزًا أو اشترِ الوصول للمتابعة.', subtextLabel: 'ما بين السطور', socialBtnLabel: 'تحويله إلى منشور على وسائل التواصل', socialHeading: 'تعليق جاهز للنشر', socialGeneratingBtn: 'جارٍ كتابة التعليق...', followUpBtnLabel: 'صياغة رسالة خاصة للمتابعة', followUpHeading: 'رسالة خاصة للعميل', followUpGeneratingBtn: 'جارٍ كتابة الرسالة...', haveCodeLabel: 'هل لديك رمز بالفعل؟'},
+    fa: { title: 'ReviewReply AI', subtitle: 'نظر مشتری را وارد کنید و در چند ثانیه پاسخ‌های مناسب دریافت کنید.', businessLabel: 'نام کسب‌وکار', businessPh: 'مثال: کافه صبح', reviewLabel: 'نظر مشتری را وارد کنید', reviewPh: 'مثال: قهوه عالی بود اما سرویس روز شنبه کند بود...', toneLabel: 'لحن پاسخ', toneWarm: 'گرم', toneProfessional: 'حرفه‌ای', toneBrief: 'کوتاه', languageLabel: 'زبان رابط کاربری', generateBtn: 'ایجاد پاسخ‌ها', generatingBtn: 'در حال نوشتن...', fillError: 'لطفاً نام کسب‌وکار و نظر را وارد کنید.', genError: 'ایجاد نشد. دوباره امتحان کنید.', positiveLabel: 'نظر مثبت', negativeLabel: 'نظر منفی', mixedLabel: 'نظر ترکیبی', copyBtn: 'کپی', copiedBtn: 'کپی شد!', repliesHeading: 'گزینه‌های پاسخ' , licenseGateTitle: 'کد دسترسی را وارد کنید', licensePh: 'کد دسترسی', unlockBtn: 'باز کردن', licenseInvalid: 'کد نامعتبر یا غیرفعال', photoLabel: 'پیوست عکس (اختیاری)', uploadPhoto: 'آپلود عکس', changePhoto: 'تغییر عکس', emojiToggle: 'ایموجی', noCodeText: 'کد ندارید؟ خرید دسترسی', freeTriesLabel: '{n} تلاش رایگان باقی مانده -- بدون نیاز به کد', trialExhausted: 'تلاش‌های رایگان شما تمام شد. کد را وارد کنید یا دسترسی بخرید.', subtextLabel: 'بین خطوط', socialBtnLabel: 'تبدیل به پست شبکه اجتماعی', socialHeading: 'کپشن آماده انتشار', socialGeneratingBtn: 'در حال نوشتن کپشن...', followUpBtnLabel: 'پیش‌نویس پیام خصوصی', followUpHeading: 'پیام خصوصی به مشتری', followUpGeneratingBtn: 'در حال نوشتن پیام...', haveCodeLabel: 'کد دارید؟'},
+    es: { title: 'ReviewReply AI', subtitle: 'Pega cualquier reseña y obtén respuestas listas en segundos.', businessLabel: 'Nombre del negocio', businessPh: 'Ej: Cafetería Mañana', reviewLabel: 'Pega la reseña del cliente', reviewPh: 'Ej: Me encantó el café pero el servicio fue lento el sábado...', toneLabel: 'Tono de la respuesta', toneWarm: 'Cálido', toneProfessional: 'Profesional', toneBrief: 'Breve', languageLabel: 'Idioma de la interfaz', generateBtn: 'Generar respuestas', generatingBtn: 'Escribiendo...', fillError: 'Completa el nombre del negocio y la reseña.', genError: 'No se pudo generar. Intenta de nuevo.', positiveLabel: 'Reseña positiva', negativeLabel: 'Reseña negativa', mixedLabel: 'Reseña mixta', copyBtn: 'Copiar', copiedBtn: '¡Copiado!', repliesHeading: 'Opciones de respuesta' , licenseGateTitle: 'Introduce tu código de acceso', licensePh: 'Código de acceso', unlockBtn: 'Desbloquear', licenseInvalid: 'Código inválido o inactivo', photoLabel: 'Adjuntar foto (opcional)', uploadPhoto: 'Subir foto', changePhoto: 'Cambiar foto', emojiToggle: 'Emoji', noCodeText: '¿Sin código? Comprar acceso', freeTriesLabel: 'Te quedan {n} pruebas gratis -- sin código', trialExhausted: 'Ya usaste tus pruebas gratis. Ingresa un código o compra acceso para continuar.', subtextLabel: 'Entre líneas', socialBtnLabel: 'Convertir en publicación', socialHeading: 'Descripción lista para publicar', socialGeneratingBtn: 'Escribiendo descripción...', followUpBtnLabel: 'Redactar un mensaje privado', followUpHeading: 'Mensaje privado para el cliente', followUpGeneratingBtn: 'Escribiendo mensaje...', haveCodeLabel: '¿Ya tienes un código?'},
+    fr: { title: 'ReviewReply AI', subtitle: 'Collez un avis client, obtenez des réponses réfléchies en quelques secondes.', businessLabel: "Nom de l'entreprise", businessPh: 'Ex : Café du Matin', reviewLabel: "Collez l'avis du client", reviewPh: 'Ex : Café excellent mais service lent le samedi...', toneLabel: 'Ton de la réponse', toneWarm: 'Chaleureux', toneProfessional: 'Professionnel', toneBrief: 'Court', languageLabel: "Langue de l'interface", generateBtn: 'Générer les réponses', generatingBtn: 'Rédaction en cours...', fillError: "Remplissez le nom de l'entreprise et l'avis.", genError: 'Échec de la génération. Réessayez.', positiveLabel: 'Avis positif', negativeLabel: 'Avis négatif', mixedLabel: 'Avis mitigé', copyBtn: 'Copier', copiedBtn: 'Copié !', repliesHeading: 'Options de réponse' , licenseGateTitle: "Entrez votre code d'accès", licensePh: "Code d'accès", unlockBtn: 'Déverrouiller', licenseInvalid: 'Code invalide ou inactif', photoLabel: 'Joindre une photo (facultatif)', uploadPhoto: 'Ajouter une photo', changePhoto: 'Changer la photo', emojiToggle: 'Emoji', noCodeText: "Pas de code ? Acheter lʼaccès", freeTriesLabel: 'Il vous reste {n} essais gratuits -- sans code', trialExhausted: "Vous avez utilisé vos essais gratuits. Entrez un code ou achetez l'accès pour continuer.", subtextLabel: 'Entre les lignes', socialBtnLabel: 'Transformer en publication', socialHeading: 'Légende prête à publier', socialGeneratingBtn: 'Rédaction en cours...', followUpBtnLabel: 'Rédiger un message privé', followUpHeading: 'Message privé au client', followUpGeneratingBtn: 'Rédaction du message...', haveCodeLabel: 'Vous avez déjà un code ?'},
+    de: { title: 'ReviewReply AI', subtitle: 'Bewertung einfügen, in Sekunden durchdachte Antworten erhalten.', businessLabel: 'Firmenname', businessPh: 'z.B. Café Morgen', reviewLabel: 'Kundenbewertung einfügen', reviewPh: 'z.B. Kaffee war super, aber der Service war samstags langsam...', toneLabel: 'Tonfall der Antwort', toneWarm: 'Herzlich', toneProfessional: 'Professionell', toneBrief: 'Kurz', languageLabel: 'Oberflächensprache', generateBtn: 'Antworten generieren', generatingBtn: 'Schreibe Antworten...', fillError: 'Firmenname und Bewertung ausfüllen.', genError: 'Generierung fehlgeschlagen. Erneut versuchen.', positiveLabel: 'Positive Bewertung', negativeLabel: 'Negative Bewertung', mixedLabel: 'Gemischte Bewertung', copyBtn: 'Kopieren', copiedBtn: 'Kopiert!', repliesHeading: 'Antwortoptionen' , licenseGateTitle: 'Zugangscode eingeben', licensePh: 'Zugangscode', unlockBtn: 'Entsperren', licenseInvalid: 'Ungültiger oder inaktiver Code', photoLabel: 'Foto anhängen (optional)', uploadPhoto: 'Foto hochladen', changePhoto: 'Foto ändern', emojiToggle: 'Emoji', noCodeText: 'Kein Code? Zugang kaufen', freeTriesLabel: 'Noch {n} kostenlose Versuche -- kein Code nötig', trialExhausted: 'Ihre kostenlosen Versuche sind aufgebraucht. Geben Sie einen Code ein oder kaufen Sie Zugang.', subtextLabel: 'Zwischen den Zeilen', socialBtnLabel: 'In einen Social-Media-Post umwandeln', socialHeading: 'Fertige Bildunterschrift', socialGeneratingBtn: 'Schreibe Bildunterschrift...', followUpBtnLabel: 'Private Nachricht verfassen', followUpHeading: 'Private Nachricht an den Kunden', followUpGeneratingBtn: 'Schreibe Nachricht...', haveCodeLabel: 'Haben Sie bereits einen Code?'},
+    it: { title: 'ReviewReply AI', subtitle: "Incolla una recensione e ottieni risposte pronte in pochi secondi.", businessLabel: 'Nome attività', businessPh: 'Es: Caffetteria Mattino', reviewLabel: 'Incolla la recensione del cliente', reviewPh: 'Es: Caffè ottimo ma servizio lento il sabato...', toneLabel: 'Tono della risposta', toneWarm: 'Caloroso', toneProfessional: 'Professionale', toneBrief: 'Breve', languageLabel: "Lingua dell'interfaccia", generateBtn: 'Genera risposte', generatingBtn: 'Scrittura in corso...', fillError: "Inserisci nome attività e recensione.", genError: 'Generazione non riuscita. Riprova.', positiveLabel: 'Recensione positiva', negativeLabel: 'Recensione negativa', mixedLabel: 'Recensione mista', copyBtn: 'Copia', copiedBtn: 'Copiato!', repliesHeading: 'Opzioni di risposta' , licenseGateTitle: 'Inserisci il codice di accesso', licensePh: 'Codice di accesso', unlockBtn: 'Sblocca', licenseInvalid: 'Codice non valido o inattivo', photoLabel: 'Allega una foto (facoltativo)', uploadPhoto: 'Carica foto', changePhoto: 'Cambia foto', emojiToggle: 'Emoji', noCodeText: "Nessun codice? Acquista lʼaccesso", freeTriesLabel: 'Hai ancora {n} prove gratuite -- nessun codice richiesto', trialExhausted: "Hai esaurito le prove gratuite. Inserisci un codice o acquista l'accesso.", subtextLabel: 'Tra le righe', socialBtnLabel: 'Trasforma in un post social', socialHeading: 'Didascalia pronta', socialGeneratingBtn: 'Scrittura in corso...', followUpBtnLabel: 'Scrivi un messaggio privato', followUpHeading: 'Messaggio privato al cliente', followUpGeneratingBtn: 'Scrittura messaggio...', haveCodeLabel: 'Hai già un codice?'},
+    pt: { title: 'ReviewReply AI', subtitle: 'Cole uma avaliação e receba respostas prontas em segundos.', businessLabel: 'Nome do negócio', businessPh: 'Ex: Cafeteria Manhã', reviewLabel: 'Cole a avaliação do cliente', reviewPh: 'Ex: Adorei o café mas o atendimento foi lento no sábado...', toneLabel: 'Tom da resposta', toneWarm: 'Caloroso', toneProfessional: 'Profissional', toneBrief: 'Curto', languageLabel: 'Idioma da interface', generateBtn: 'Gerar respostas', generatingBtn: 'Escrevendo...', fillError: 'Preencha o nome do negócio e a avaliação.', genError: 'Não foi possível gerar. Tente novamente.', positiveLabel: 'Avaliação positiva', negativeLabel: 'Avaliação negativa', mixedLabel: 'Avaliação mista', copyBtn: 'Copiar', copiedBtn: 'Copiado!', repliesHeading: 'Opções de resposta' , licenseGateTitle: 'Insira seu código de acesso', licensePh: 'Código de acesso', unlockBtn: 'Desbloquear', licenseInvalid: 'Código inválido ou inativo', photoLabel: 'Anexar foto (opcional)', uploadPhoto: 'Carregar foto', changePhoto: 'Alterar foto', emojiToggle: 'Emoji', noCodeText: 'Sem código? Comprar acesso', freeTriesLabel: 'Restam {n} testes grátis -- sem código', trialExhausted: 'Você usou seus testes grátis. Digite um código ou compre acesso para continuar.', subtextLabel: 'Nas entrelinhas', socialBtnLabel: 'Transformar em post', socialHeading: 'Legenda pronta para postar', socialGeneratingBtn: 'Escrevendo legenda...', followUpBtnLabel: 'Redigir mensagem privada', followUpHeading: 'Mensagem privada ao cliente', followUpGeneratingBtn: 'Escrevendo mensagem...', haveCodeLabel: 'Já tem um código?'},
+    tr: { title: 'ReviewReply AI', subtitle: 'Bir müşteri yorumu yapıştırın, saniyeler içinde yanıt seçenekleri alın.', businessLabel: 'İşletme adı', businessPh: 'Örn: Sabah Kahve Dükkanı', reviewLabel: 'Müşteri yorumunu yapıştırın', reviewPh: 'Örn: Kahve harikaydı ama cumartesi hizmet yavaştı...', toneLabel: 'Yanıt tonu', toneWarm: 'Samimi', toneProfessional: 'Profesyonel', toneBrief: 'Kısa', languageLabel: 'Arayüz dili', generateBtn: 'Yanıtları oluştur', generatingBtn: 'Yazılıyor...', fillError: 'İşletme adını ve yorumu girin.', genError: 'Oluşturulamadı. Tekrar deneyin.', positiveLabel: 'Olumlu yorum', negativeLabel: 'Olumsuz yorum', mixedLabel: 'Karışık yorum', copyBtn: 'Kopyala', copiedBtn: 'Kopyalandı!', repliesHeading: 'Yanıt seçenekleri' , licenseGateTitle: 'Erişim kodunuzu girin', licensePh: 'Erişim kodu', unlockBtn: 'Kilidi aç', licenseInvalid: 'Geçersiz veya etkin olmayan kod', photoLabel: 'Fotoğraf ekle (isteğe bağlı)', uploadPhoto: 'Fotoğraf yükle', changePhoto: 'Fotoğrafı değiştir', emojiToggle: 'Emoji', noCodeText: 'Kodunuz yok mu? Erişim satın alın', freeTriesLabel: '{n} ücretsiz deneme hakkınız kaldı -- kod gerekmez', trialExhausted: 'Ücretsiz denemeleriniz bitti. Bir kod girin veya erişim satın alın.', subtextLabel: 'Satır aralarında', socialBtnLabel: 'Sosyal medya gönderisine dönüştür', socialHeading: 'Yayına hazır başlık', socialGeneratingBtn: 'Başlık yazılıyor...', followUpBtnLabel: 'Özel bir mesaj taslağı hazırla', followUpHeading: 'Müşteriye özel mesaj', followUpGeneratingBtn: 'Mesaj yazılıyor...', haveCodeLabel: 'Zaten bir kodunuz var mı?'},
+    zh: { title: 'ReviewReply AI', subtitle: '粘贴任意客户评价，几秒内获得回复建议。', businessLabel: '企业名称', businessPh: '例如：晨光咖啡馆', reviewLabel: '粘贴客户评价', reviewPh: '例如：咖啡很棒，但周六服务较慢……', toneLabel: '回复语气', toneWarm: '亲切', toneProfessional: '专业', toneBrief: '简短', languageLabel: '界面语言', generateBtn: '生成回复', generatingBtn: '生成中...', fillError: '请填写企业名称并粘贴评价。', genError: '生成失败，请重试。', positiveLabel: '正面评价', negativeLabel: '负面评价', mixedLabel: '中性评价', copyBtn: '复制', copiedBtn: '已复制！', repliesHeading: '回复选项' , licenseGateTitle: '输入访问码', licensePh: '访问码', unlockBtn: '解锁', licenseInvalid: '无效或未激活的代码', photoLabel: '附加照片（可选）', uploadPhoto: '上传照片', changePhoto: '更换照片', emojiToggle: '表情符号', noCodeText: '没有代码？购买访问权限', freeTriesLabel: '还剩 {n} 次免费试用 -- 无需代码', trialExhausted: '您的免费试用已用完。请输入代码或购买访问权限。', subtextLabel: '弦外之音', socialBtnLabel: '转换为社交媒体帖子', socialHeading: '可直接发布的文案', socialGeneratingBtn: '正在生成文案...', followUpBtnLabel: '起草私信', followUpHeading: '给客户的私信', followUpGeneratingBtn: '正在生成私信...', haveCodeLabel: '已有代码？'},
+    hi: { title: 'ReviewReply AI', subtitle: 'कोई भी ग्राहक समीक्षा पेस्ट करें, सेकंडों में जवाब पाएं।', businessLabel: 'व्यवसाय का नाम', businessPh: 'उदा: मॉर्निंग कॉफी शॉप', reviewLabel: 'ग्राहक की समीक्षा पेस्ट करें', reviewPh: 'उदा: कॉफी बढ़िया थी लेकिन शनिवार को सेवा धीमी थी...', toneLabel: 'जवाब का लहजा', toneWarm: 'आत्मीय', toneProfessional: 'व्यावसायिक', toneBrief: 'संक्षिप्त', languageLabel: 'इंटरफ़ेस भाषा', generateBtn: 'जवाब बनाएं', generatingBtn: 'लिखा जा रहा है...', fillError: 'व्यवसाय का नाम और समीक्षा भरें।', genError: 'जनरेट नहीं हो सका। फिर से प्रयास करें।', positiveLabel: 'सकारात्मक समीक्षा', negativeLabel: 'नकारात्मक समीक्षा', mixedLabel: 'मिश्रित समीक्षा', copyBtn: 'कॉपी करें', copiedBtn: 'कॉपी हो गया!', repliesHeading: 'जवाब विकल्प' , licenseGateTitle: 'अपना एक्सेस कोड डालें', licensePh: 'एक्सेस कोड', unlockBtn: 'अनलॉक करें', licenseInvalid: 'अमान्य या निष्क्रिय कोड', photoLabel: 'फोटो जोड़ें (वैकल्पिक)', uploadPhoto: 'फोटो अपलोड करें', changePhoto: 'फोटो बदलें', emojiToggle: 'इमोजी', noCodeText: 'कोड नहीं है? एक्सेस खरीदें', freeTriesLabel: '{n} मुफ्त प्रयास बाकी हैं -- कोड की जरूरत नहीं', trialExhausted: 'आपके मुफ्त प्रयास समाप्त हो गए। जारी रखने के लिए कोड डालें या एक्सेस खरीदें।', subtextLabel: 'पंक्तियों के बीच', socialBtnLabel: 'सोशल मीडिया पोस्ट में बदलें', socialHeading: 'पोस्ट के लिए तैयार कैप्शन', socialGeneratingBtn: 'कैप्शन लिखा जा रहा है...', followUpBtnLabel: 'निजी संदेश तैयार करें', followUpHeading: 'ग्राहक के लिए निजी संदेश', followUpGeneratingBtn: 'संदेश लिखा जा रहा है...', haveCodeLabel: 'पहले से कोड है?'},
+    ja: { title: 'ReviewReply AI', subtitle: 'お客様のレビューを貼り付けるだけで、数秒で返信案が届きます。', businessLabel: 'ビジネス名', businessPh: '例：モーニングコーヒーショップ', reviewLabel: 'お客様のレビューを貼り付け', reviewPh: '例：コーヒーは最高でしたが、土曜日のサービスが遅かったです…', toneLabel: '返信のトーン', toneWarm: '温かい', toneProfessional: 'プロフェッショナル', toneBrief: '簡潔', languageLabel: 'インターフェース言語', generateBtn: '返信を生成', generatingBtn: '作成中...', fillError: 'ビジネス名とレビューを入力してください。', genError: '生成できませんでした。もう一度お試しください。', positiveLabel: '好意的なレビュー', negativeLabel: '否定的なレビュー', mixedLabel: '中立的なレビュー', copyBtn: 'コピー', copiedBtn: 'コピーしました！', repliesHeading: '返信オプション' , licenseGateTitle: 'アクセスコードを入力', licensePh: 'アクセスコード', unlockBtn: '解除', licenseInvalid: '無効または無効化されたコード', photoLabel: '写真を添付（任意）', uploadPhoto: '写真をアップロード', changePhoto: '写真を変更', emojiToggle: '絵文字', noCodeText: 'コードがない場合はこちら', freeTriesLabel: '残り{n}回無料でお試しいただけます -- コード不要', trialExhausted: '無料トライアルを使い切りました。コードを入力するか、アクセスを購入してください。', subtextLabel: '行間を読む', socialBtnLabel: 'SNS投稿に変換', socialHeading: '投稿用キャプション', socialGeneratingBtn: 'キャプション作成中...', followUpBtnLabel: '個別メッセージを作成', followUpHeading: 'お客様への個別メッセージ', followUpGeneratingBtn: 'メッセージ作成中...', haveCodeLabel: 'コードをお持ちですか？'},
+    sv: { title: 'ReviewReply AI', subtitle: 'Klistra in en recension, få genomtänkta svar på sekunder.', businessLabel: 'Företagsnamn', businessPh: 'T.ex: Morgon Kaffehus', reviewLabel: 'Klistra in kundens recension', reviewPh: 'T.ex: Älskade kaffet men servicen var långsam på lördagen...', toneLabel: 'Svarston', toneWarm: 'Varm', toneProfessional: 'Professionell', toneBrief: 'Kort', languageLabel: 'Gränssnittsspråk', generateBtn: 'Generera svar', generatingBtn: 'Skriver svar...', fillError: 'Fyll i företagsnamn och recension.', genError: 'Kunde inte generera. Försök igen.', positiveLabel: 'Positiv recension', negativeLabel: 'Negativ recension', mixedLabel: 'Blandad recension', copyBtn: 'Kopiera', copiedBtn: 'Kopierat!', repliesHeading: 'Svarsalternativ' , licenseGateTitle: 'Ange din åtkomstkod', licensePh: 'Åtkomstkod', unlockBtn: 'Lås upp', licenseInvalid: 'Ogiltig eller inaktiv kod', photoLabel: 'Bifoga foto (valfritt)', uploadPhoto: 'Ladda upp foto', changePhoto: 'Byt foto', emojiToggle: 'Emoji', noCodeText: 'Ingen kod? Köp åtkomst', freeTriesLabel: '{n} gratisförsök kvar -- ingen kod behövs', trialExhausted: 'Dina gratisförsök är slut. Ange en kod eller köp åtkomst för att fortsätta.', subtextLabel: 'Mellan raderna', socialBtnLabel: 'Gör om till ett inlägg', socialHeading: 'Klar bildtext', socialGeneratingBtn: 'Skriver bildtext...', followUpBtnLabel: 'Skriv ett privat meddelande', followUpHeading: 'Privat meddelande till kunden', followUpGeneratingBtn: 'Skriver meddelande...', haveCodeLabel: 'Har du redan en kod?'},
+    no: { title: 'ReviewReply AI', subtitle: 'Lim inn en anmeldelse, få gjennomtenkte svar på sekunder.', businessLabel: 'Bedriftsnavn', businessPh: 'F.eks: Morgen Kaffebar', reviewLabel: 'Lim inn kundens anmeldelse', reviewPh: 'F.eks: Elsket kaffen men service var treg på lørdag...', toneLabel: 'Svartone', toneWarm: 'Varm', toneProfessional: 'Profesjonell', toneBrief: 'Kort', languageLabel: 'Grensesnittspråk', generateBtn: 'Generer svar', generatingBtn: 'Skriver svar...', fillError: 'Fyll inn bedriftsnavn og anmeldelse.', genError: 'Kunne ikke generere. Prøv igjen.', positiveLabel: 'Positiv anmeldelse', negativeLabel: 'Negativ anmeldelse', mixedLabel: 'Blandet anmeldelse', copyBtn: 'Kopier', copiedBtn: 'Kopiert!', repliesHeading: 'Svaralternativer' , licenseGateTitle: 'Angi tilgangskoden din', licensePh: 'Tilgangskode', unlockBtn: 'Lås opp', licenseInvalid: 'Ugyldig eller inaktiv kode', photoLabel: 'Legg ved bilde (valgfritt)', uploadPhoto: 'Last opp bilde', changePhoto: 'Bytt bilde', emojiToggle: 'Emoji', noCodeText: 'Ingen kode? Kjøp tilgang', freeTriesLabel: '{n} gratis forsøk igjen -- ingen kode nødvendig', trialExhausted: 'Gratisforsøkene dine er brukt opp. Skriv inn en kode eller kjøp tilgang.', subtextLabel: 'Mellom linjene', socialBtnLabel: 'Gjør om til et innlegg', socialHeading: 'Klar bildetekst', socialGeneratingBtn: 'Skriver bildetekst...', followUpBtnLabel: 'Skriv en privat melding', followUpHeading: 'Privat melding til kunden', followUpGeneratingBtn: 'Skriver melding...', haveCodeLabel: 'Har du allerede en kode?'},
+    da: { title: 'ReviewReply AI', subtitle: 'Indsæt en anmeldelse, få gennemtænkte svar på sekunder.', businessLabel: 'Virksomhedsnavn', businessPh: 'F.eks: Morgen Kaffebar', reviewLabel: 'Indsæt kundens anmeldelse', reviewPh: 'F.eks: Elskede kaffen men service var langsom lørdag...', toneLabel: 'Svartone', toneWarm: 'Varm', toneProfessional: 'Professionel', toneBrief: 'Kort', languageLabel: 'Grænsefladesprog', generateBtn: 'Generer svar', generatingBtn: 'Skriver svar...', fillError: 'Udfyld virksomhedsnavn og anmeldelse.', genError: 'Kunne ikke generere. Prøv igen.', positiveLabel: 'Positiv anmeldelse', negativeLabel: 'Negativ anmeldelse', mixedLabel: 'Blandet anmeldelse', copyBtn: 'Kopier', copiedBtn: 'Kopieret!', repliesHeading: 'Svarmuligheder' , licenseGateTitle: 'Indtast din adgangskode', licensePh: 'Adgangskode', unlockBtn: 'Lås op', licenseInvalid: 'Ugyldig eller inaktiv kode', photoLabel: 'Vedhæft foto (valgfrit)', uploadPhoto: 'Upload foto', changePhoto: 'Skift foto', emojiToggle: 'Emoji', noCodeText: 'Ingen kode? Køb adgang', freeTriesLabel: '{n} gratis forsøg tilbage -- ingen kode nødvendig', trialExhausted: 'Dine gratis forsøg er brugt. Indtast en kode, eller køb adgang for at fortsætte.', subtextLabel: 'Mellem linjerne', socialBtnLabel: 'Lav om til et opslag', socialHeading: 'Klar billedtekst', socialGeneratingBtn: 'Skriver billedtekst...', followUpBtnLabel: 'Skriv en privat besked', followUpHeading: 'Privat besked til kunden', followUpGeneratingBtn: 'Skriver besked...', haveCodeLabel: 'Har du allerede en kode?'},
+    fi: { title: 'ReviewReply AI', subtitle: 'Liitä asiakasarvostelu, saat harkittuja vastauksia sekunneissa.', businessLabel: 'Yrityksen nimi', businessPh: 'Esim: Aamu Kahvila', reviewLabel: 'Liitä asiakkaan arvostelu', reviewPh: 'Esim: Kahvi oli mahtavaa mutta palvelu hidasta lauantaina...', toneLabel: 'Vastauksen sävy', toneWarm: 'Lämmin', toneProfessional: 'Ammattimainen', toneBrief: 'Lyhyt', languageLabel: 'Käyttöliittymän kieli', generateBtn: 'Luo vastaukset', generatingBtn: 'Kirjoitetaan...', fillError: 'Täytä yrityksen nimi ja arvostelu.', genError: 'Luonti epäonnistui. Yritä uudelleen.', positiveLabel: 'Myönteinen arvostelu', negativeLabel: 'Kielteinen arvostelu', mixedLabel: 'Sekalainen arvostelu', copyBtn: 'Kopioi', copiedBtn: 'Kopioitu!', repliesHeading: 'Vastausvaihtoehdot' , licenseGateTitle: 'Anna käyttöoikeuskoodisi', licensePh: 'Käyttöoikeuskoodi', unlockBtn: 'Avaa lukitus', licenseInvalid: 'Virheellinen tai passiivinen koodi', photoLabel: 'Liitä kuva (valinnainen)', uploadPhoto: 'Lataa kuva', changePhoto: 'Vaihda kuva', emojiToggle: 'Emoji', noCodeText: 'Ei koodia? Osta käyttöoikeus', freeTriesLabel: '{n} ilmaista yritystä jäljellä -- ei koodia tarvita', trialExhausted: 'Ilmaiset yrityksesi on käytetty. Anna koodi tai osta käyttöoikeus jatkaaksesi.', subtextLabel: 'Rivien välissä', socialBtnLabel: 'Muuta somejulkaisuksi', socialHeading: 'Valmis kuvateksti', socialGeneratingBtn: 'Kirjoitetaan kuvatekstiä...', followUpBtnLabel: 'Kirjoita yksityinen viesti', followUpHeading: 'Yksityinen viesti asiakkaalle', followUpGeneratingBtn: 'Kirjoitetaan viestiä...', haveCodeLabel: 'Onko sinulla jo koodi?'},
+    uk: { title: 'ReviewReply AI', subtitle: 'Вставте відгук клієнта — отримайте варіанти відповіді за секунди.', businessLabel: 'Назва бізнесу', businessPh: 'Наприклад: кавʼярня «Ранок»', reviewLabel: 'Вставте відгук клієнта', reviewPh: 'Наприклад: кава чудова, але обслуговування в суботу було повільним...', toneLabel: 'Тон відповіді', toneWarm: 'Теплий', toneProfessional: 'Діловий', toneBrief: 'Короткий', languageLabel: 'Мова інтерфейсу', generateBtn: 'Згенерувати відповіді', generatingBtn: 'Пишу відповіді...', fillError: 'Заповніть назву бізнесу і вставте відгук.', genError: 'Не вдалося згенерувати. Спробуйте ще раз.', positiveLabel: 'Позитивний відгук', negativeLabel: 'Негативний відгук', mixedLabel: 'Змішаний відгук', copyBtn: 'Копіювати', copiedBtn: 'Скопійовано!', repliesHeading: 'Варіанти відповіді' , licenseGateTitle: 'Введіть код доступу', licensePh: 'Код доступу', unlockBtn: 'Розблокувати', licenseInvalid: 'Невірний або неактивний код', photoLabel: 'Додати фото (необовʼязково)', uploadPhoto: 'Завантажити фото', changePhoto: 'Змінити фото', emojiToggle: 'Емодзі', noCodeText: 'Немає коду? Купити доступ', freeTriesLabel: 'Залишилось {n} безкоштовних спроб -- код не потрібен', trialExhausted: 'Безкоштовні спроби закінчились. Введіть код або купіть доступ, щоб продовжити.', subtextLabel: 'Між рядків', socialBtnLabel: 'Перетворити на пост', socialHeading: 'Готовий підпис для посту', socialGeneratingBtn: 'Пишу підпис...', followUpBtnLabel: 'Скласти особисте повідомлення', followUpHeading: 'Особисте повідомлення клієнту', followUpGeneratingBtn: 'Пишу повідомлення...', haveCodeLabel: 'Вже маєте код?'},
+    be: { title: 'ReviewReply AI', subtitle: 'Устаўце водгук кліента — атрымайце варыянты адказу за секунды.', businessLabel: 'Назва бізнесу', businessPh: 'Напрыклад: кавярня «Раніца»', reviewLabel: 'Устаўце водгук кліента', reviewPh: 'Напрыклад: кава выдатная, але абслугоўванне ў суботу было павольным...', toneLabel: 'Тон адказу', toneWarm: 'Цёплы', toneProfessional: 'Дзелавы', toneBrief: 'Кароткі', languageLabel: 'Мова інтэрфейсу', generateBtn: 'Згенераваць адказы', generatingBtn: 'Пішу адказы...', fillError: 'Запоўніце назву бізнесу і ўстаўце водгук.', genError: 'Не атрымалася згенераваць. Паспрабуйце яшчэ раз.', positiveLabel: 'Станоўчы водгук', negativeLabel: 'Адмоўны водгук', mixedLabel: 'Змешаны водгук', copyBtn: 'Капіяваць', copiedBtn: 'Скапіявана!', repliesHeading: 'Варыянты адказу' , licenseGateTitle: 'Увядзіце код доступу', licensePh: 'Код доступу', unlockBtn: 'Разблакаваць', licenseInvalid: 'Няправільны або неактыўны код', photoLabel: 'Дадаць фота (неабавязкова)', uploadPhoto: 'Загрузіць фота', changePhoto: 'Змяніць фота', emojiToggle: 'Эмодзі', noCodeText: 'Няма кода? Купіць доступ', freeTriesLabel: 'Засталося {n} бясплатных спроб -- код не патрэбны', trialExhausted: 'Бясплатныя спробы скончыліся. Увядзіце код або купіце доступ, каб працягнуць.', subtextLabel: 'Паміж радкоў', socialBtnLabel: 'Ператварыць у пост', socialHeading: 'Гатовы подпіс для посту', socialGeneratingBtn: 'Пішу подпіс...', followUpBtnLabel: 'Скласці асабістае паведамленне', followUpHeading: 'Асабістае паведамленне кліенту', followUpGeneratingBtn: 'Пішу паведамленне...', haveCodeLabel: 'Ужо ёсць код?'},
+    el: { title: 'ReviewReply AI', subtitle: 'Επικολλήστε μια κριτική πελάτη και λάβετε απαντήσεις σε δευτερόλεπτα.', businessLabel: 'Όνομα επιχείρησης', businessPh: 'Π.χ. Καφετέρια Πρωί', reviewLabel: 'Επικολλήστε την κριτική του πελάτη', reviewPh: 'Π.χ. Λάτρεψα τον καφέ αλλά η εξυπηρέτηση ήταν αργή το Σάββατο...', toneLabel: 'Τόνος απάντησης', toneWarm: 'Θερμός', toneProfessional: 'Επαγγελματικός', toneBrief: 'Σύντομος', languageLabel: 'Γλώσσα διεπαφής', generateBtn: 'Δημιουργία απαντήσεων', generatingBtn: 'Σύνταξη απαντήσεων...', fillError: 'Συμπληρώστε το όνομα της επιχείρησης και την κριτική.', genError: 'Αποτυχία δημιουργίας. Δοκιμάστε ξανά.', positiveLabel: 'Θετική κριτική', negativeLabel: 'Αρνητική κριτική', mixedLabel: 'Μικτή κριτική', copyBtn: 'Αντιγραφή', copiedBtn: 'Αντιγράφηκε!', repliesHeading: 'Επιλογές απάντησης' , licenseGateTitle: 'Εισαγάγετε τον κωδικό πρόσβασης', licensePh: 'Κωδικός πρόσβασης', unlockBtn: 'Ξεκλείδωμα', licenseInvalid: 'Μη έγκυρος ή ανενεργός κωδικός', photoLabel: 'Επισύναψη φωτογραφίας (προαιρετικό)', uploadPhoto: 'Μεταφόρτωση φωτογραφίας', changePhoto: 'Αλλαγή φωτογραφίας', emojiToggle: 'Emoji', noCodeText: 'Δεν έχετε κωδικό; Αγοράστε πρόσβαση', freeTriesLabel: 'Απομένουν {n} δωρεάν δοκιμές -- δεν χρειάζεται κωδικός', trialExhausted: 'Οι δωρεάν δοκιμές σας τελείωσαν. Εισαγάγετε κωδικό ή αγοράστε πρόσβαση.', subtextLabel: 'Ανάμεσα στις γραμμές', socialBtnLabel: 'Μετατροπή σε ανάρτηση', socialHeading: 'Έτοιμη λεζάντα', socialGeneratingBtn: 'Σύνταξη λεζάντας...', followUpBtnLabel: 'Σύνταξη ιδιωτικού μηνύματος', followUpHeading: 'Ιδιωτικό μήνυμα στον πελάτη', followUpGeneratingBtn: 'Σύνταξη μηνύματος...', haveCodeLabel: 'Έχετε ήδη κωδικό;'},
+  };
+
+  const currentLang = languages.find(l => l.code === language) || languages[0];
+  const t = ui[language] || ui.en;
+
+  const tones = [
+    { value: 'warm', label: t.toneWarm },
+    { value: 'professional', label: t.toneProfessional },
+    { value: 'brief', label: t.toneBrief },
+  ];
+
+  async function handleGenerate() {
+    if (!businessName.trim() || !reviewText.trim()) {
+      setError(t.fillError);
+      return;
+    }
+    if (!checkAndUseDailyLimit()) {
+      setDailyCount(DAILY_GEN_LIMIT);
+      setError(t.limitReached || 'Daily generation limit reached. Try again tomorrow.');
+      return;
+    }
+    setDailyCount(getDailyCount());
+    setError('');
+    setLoading(true);
+    setResult(null);
+    setCopiedIdx(null);
+    setSocialPost(null);
+    setFollowUpMsg(null);
+
+    const toneInstruction = {
+      warm: 'Write in a warm, personal, genuinely appreciative tone.',
+      professional: 'Write in a polished, professional, business-appropriate tone.',
+      brief: 'Write a short, simple, natural-sounding reply -- 1-2 sentences max.',
+    }[tone];
+
+    const emojiInstruction = includeEmoji
+      ? 'Include one relevant emoji per reply, used naturally, not excessively.'
+      : 'Do not use any emojis.';
+
+    const photoInstruction = photos.length > 0
+      ? `${photos.length > 1 ? photos.length + ' photos were' : 'A photo was'} attached to this review. Look at ${photos.length > 1 ? 'them' : 'it'} carefully and reference something specific and true about what you actually see, if it adds something genuine to the reply -- do not force it if it does not fit naturally.`
+      : '';
+
+    const promptText = `You are helping a small business owner named "${businessName}" reply to a customer review. Here is the review:
+
+"${reviewText}"
+
+${toneInstruction} ${emojiInstruction} Write your reply in ${currentLang.englishName}, matching the interface language selected by the business owner -- regardless of what language the review itself is written in. ${photoInstruction}
+
+Read the review carefully and reference specific details the customer actually mentioned (a product name, a staff member, a specific issue or compliment) instead of generic phrases like "thank you for your feedback." Be precise, not generic.
+
+If the review is positive, thank the customer specifically for what they mentioned, and invite them back naturally. If the review is negative or mixed, acknowledge their specific concern without being defensive, briefly explain or apologize where appropriate, and offer a concrete next step (e.g. contact directly to resolve it) -- never argue or make excuses.
+
+Write 3 different reply options, varying in phrasing and structure (not just synonyms of the same sentence).
+
+Also write one short, private internal note for the business owner (in ${currentLang.englishName}, regardless of the review's language, since this part is for the owner, not the customer) -- one sentence pointing out a concrete, specific pattern or issue worth paying attention to, only if the review actually contains something actionable. If there is genuinely nothing actionable (e.g. a purely positive review with no specific suggestion), leave this as an empty string rather than inventing something.
+
+Also, separately, read between the lines of the review's tone (in ${currentLang.englishName}) -- one short phrase noting anything the words alone might not fully convey (e.g. praise that sounds lukewarm, politeness masking real frustration, genuine warmth vs. generic phrasing). Only include this if there is a real, noticeable gap between the literal words and the likely underlying feeling -- if the tone is straightforward and matches the words, leave this as an empty string.
+
+Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
+{"sentiment": "positive" or "negative" or "mixed", "replies": ["reply option 1", "reply option 2", "reply option 3"], "insight": "short internal note, or empty string", "subtext": "short tone note, or empty string"}`;
+
+    let content = promptText;
+    if (photos.length > 0) {
+      content = [
+        ...photos.map(p => ({ type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.base64 } })),
+        { type: 'text', text: promptText }
+      ];
+    }
+
+    const isTrial = !unlocked && trialCount < FREE_TRIAL_LIMIT;
+
+    try {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ licenseCode, content, trial: isTrial })
+      });
+
+      if (response.status === 403 || response.status === 429) {
+        const ge = guardError(await response.json().catch(() => ({})));
+        if (ge) {
+          if (ge.guardCode === 'trial_used') {
+            localStorage.setItem('reviewreply_trial_count', String(FREE_TRIAL_LIMIT));
+            setTrialCount(FREE_TRIAL_LIMIT);
+          }
+          throw ge;
+        }
+        throw new Error('license');
+      }
+
+      const data = await response.json();
+      const text = data.content.map(b => b.text || '').join('');
+      const clean = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      setResult(parsed);
+
+      if (isTrial) {
+        const next = trialCount + 1;
+        localStorage.setItem('reviewreply_trial_count', String(next));
+        setTrialCount(next);
+      }
+    } catch (err) {
+      if (err.message === 'license') {
+        setUnlocked(false);
+        setLicenseError(t.licenseInvalid);
+      } else {
+        setError(err.guardMessage || t.genError);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handlePhotoUpload(e) {
+    const files = Array.from(e.target.files || []).slice(0, 3 - photos.length);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        setPhotos(prev => prev.length >= 3 ? prev : [...prev, { preview: reader.result, base64, mediaType: file.type }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  }
+
+  function removePhoto(index) {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
+  }
+
+  // Проверка кода: коды AppSumo начинаются с "REPLY-" и проверяются через
+  // /api/redeem-appsumo (уникальный код на покупателя, отмечается как
+  // использованный). Обычные коды (Getly) работают как раньше.
+  // Разблокировка теперь происходит на отдельной странице /unlock.html —
+  // она сама вызывает /api/redeem-appsumo при необходимости, ставит
+  // localStorage-флаги и возвращает пользователя на / с ?welcome=1.
+
+  function handleCopy(replyText, idx) {
+    navigator.clipboard.writeText(replyText).then(() => {
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 1500);
+    });
+  }
+
+  async function handleGenerateSocialPost() {
+    if (!result) return;
+    if (!checkAndUseDailyLimit()) {
+      setDailyCount(DAILY_GEN_LIMIT);
+      setError(t.limitReached || 'Daily generation limit reached. Try again tomorrow.');
+      return;
+    }
+    setDailyCount(getDailyCount());
+    setSocialLoading(true);
+    setSocialCopied(false);
+
+    const socialPrompt = `A customer left this positive review for a small business called "${businessName}":
+
+"${reviewText}"
+
+Write one short, upbeat social media caption (2-3 sentences, in ${currentLang.englishName}) celebrating this happy customer -- suitable for Instagram or TikTok. Do not quote the review word-for-word; capture the spirit of it in the business's own voice. Include one relevant emoji. Then provide 5 relevant hashtags (no # symbol, lowercase, no spaces).
+
+Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
+{"caption": "the caption text", "hashtags": ["tag1", "tag2", "tag3", "tag4", "tag5"]}`;
+
+    try {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ licenseCode, content: socialPrompt, trial: !unlocked && trialCount <= FREE_TRIAL_LIMIT })
+      });
+      const data = await response.json();
+      { const ge = guardError(data); if (ge) throw ge; }
+      const text = data.content.map(b => b.text || '').join('');
+      const clean = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      setSocialPost(parsed);
+    } catch (err) {
+      setError(err.guardMessage || t.genError);
+    } finally {
+      setSocialLoading(false);
+    }
+  }
+
+  function handleCopySocial() {
+    if (!socialPost) return;
+    const full = socialPost.caption + '\n\n' + socialPost.hashtags.map(h => '#' + h).join(' ');
+    navigator.clipboard.writeText(full).then(() => {
+      setSocialCopied(true);
+      setTimeout(() => setSocialCopied(false), 1500);
+    });
+  }
+
+  async function handleGenerateFollowUp() {
+    if (!result) return;
+    if (!checkAndUseDailyLimit()) {
+      setDailyCount(DAILY_GEN_LIMIT);
+      setError(t.limitReached || 'Daily generation limit reached. Try again tomorrow.');
+      return;
+    }
+    setDailyCount(getDailyCount());
+    setFollowUpLoading(true);
+    setFollowUpCopied(false);
+
+    const followUpPrompt = `A customer named (unknown, address them generically e.g. "Hi there") left this negative or mixed review for a small business called "${businessName}":
+
+"${reviewText}"
+
+Write one short, genuine private message (in ${currentLang.englishName}) that the business owner could send directly to this customer (via email or DM, not as a public reply) to try to actually resolve the issue. Unlike a public reply, this can be more direct and personal: acknowledge the specific problem, offer a concrete gesture if appropriate (e.g. a discount, a replacement, an invitation to discuss), and invite them to reply. Keep it warm but not groveling -- 3-5 sentences.
+
+Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
+{"message": "the private message text"}`;
+
+    try {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ licenseCode, content: followUpPrompt, trial: !unlocked && trialCount <= FREE_TRIAL_LIMIT })
+      });
+      const data = await response.json();
+      { const ge = guardError(data); if (ge) throw ge; }
+      const text = data.content.map(b => b.text || '').join('');
+      const clean = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      setFollowUpMsg(parsed.message);
+    } catch (err) {
+      setError(err.guardMessage || t.genError);
+    } finally {
+      setFollowUpLoading(false);
+    }
+  }
+
+  function handleCopyFollowUp() {
+    if (!followUpMsg) return;
+    navigator.clipboard.writeText(followUpMsg).then(() => {
+      setFollowUpCopied(true);
+      setTimeout(() => setFollowUpCopied(false), 1500);
+    });
+  }
+
+  const sentimentStyles = {
+    positive: { bg: '#EAF3EC', text: '#3D6B4A', label: t.positiveLabel },
+    negative: { bg: '#FBEAE7', text: '#B34B3C', label: t.negativeLabel },
+    mixed: { bg: '#FBF2E3', text: '#A56A45', label: t.mixedLabel },
+  };
+
+  const bodyFont = currentLang.rtl ? "'Cairo', sans-serif" : 'inherit';
+
+  return (
+    <div className="min-h-screen py-10 px-4 relative overflow-hidden" dir={currentLang.rtl ? 'rtl' : 'ltr'} style={{ background: '#F5F4EE', fontFamily: bodyFont }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Playfair+Display:wght@500&family=Cairo:wght@400;700&display=swap');
+        @keyframes floatBubble { 0%, 100% { transform: translate(0, 0) rotate(-4deg); } 50% { transform: translate(12px, -18px) rotate(4deg); } }
+      `}</style>
+
+      <div className="absolute rounded-full pointer-events-none" style={{ width: 280, height: 280, background: '#D97757', filter: 'blur(90px)', opacity: 0.10, top: -80, left: -60 }} />
+      <div className="absolute rounded-full pointer-events-none" style={{ width: 240, height: 240, background: '#BD5D3A', filter: 'blur(90px)', opacity: 0.10, bottom: -60, right: -40 }} />
+
+      {/* Плавающие значки речевого пузыря — декоративные, позади формы */}
+      <svg className="absolute pointer-events-none" style={{ top: '16%', left: '5%', width: 90, height: 90, opacity: 0.2, zIndex: 0, animation: 'floatBubble 10s ease-in-out infinite' }} viewBox="0 0 24 24" fill="none">
+        <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" fill="#D97757" />
+      </svg>
+      <svg className="absolute pointer-events-none" style={{ top: '60%', right: '6%', width: 64, height: 64, opacity: 0.2, zIndex: 0, animation: 'floatBubble 13s ease-in-out infinite', animationDelay: '-4s' }} viewBox="0 0 24 24" fill="none">
+        <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" fill="#BD5D3A" />
+      </svg>
+      <svg className="absolute pointer-events-none" style={{ top: '6%', right: '10%', width: 44, height: 44, opacity: 0.2, zIndex: 0, animation: 'floatBubble 8s ease-in-out infinite', animationDelay: '-2s' }} viewBox="0 0 24 24" fill="none">
+        <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" fill="#C0574B" />
+      </svg>
+
+      <div className="max-w-xl mx-auto relative" style={{ zIndex: 1 }}>
+        {!unlocked && (
+          <div className="rounded-lg p-3 mb-4" style={{ background: trialCount >= FREE_TRIAL_LIMIT ? '#FDECEC' : '#FDF3E8', border: `1px solid ${trialCount >= FREE_TRIAL_LIMIT ? '#F3C4C4' : '#F2D9B0'}` }}>
+            {trialCount >= FREE_TRIAL_LIMIT ? (
+              <div className="flex items-start gap-2.5">
+                <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: '50%', marginTop: 1, background: '#D97757', display: 'inline-block' }} />
+                <div style={{ flex: 1 }}>
+                  <p className="text-sm" style={{ color: '#8A4A38', margin: '0 0 10px', fontWeight: 600 }}>Your free preview is over. Enter your code whenever you're ready to keep going.</p>
+                  <a
+                    href="/unlock.html"
+                    className="inline-block font-medium px-4 py-2 rounded-lg text-sm"
+                    style={{ background: '#D97757', color: '#FFFFFF', textDecoration: 'none' }}
+                  >
+                    Enter your code →
+                  </a>
+                  <a href="/buy.html" className="block text-xs mt-2" style={{ color: '#A56A45' }}>{t.noCodeText}</a>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2.5">
+                <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: '50%', background: '#D97757', display: 'inline-block' }} />
+                <p className="text-sm" style={{ color: '#8A6B1A', margin: 0 }}>Try it free — your first generation is on us. No code needed.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {showWelcome && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(45,42,38,0.5)', backdropFilter: 'blur(4px)', animation: 'welcomeFadeIn 0.4s ease both',
+          }}>
+            <style>{`
+              @keyframes welcomeFadeIn { from { opacity: 0; } to { opacity: 1; } }
+              @keyframes welcomeFadeOut { to { opacity: 0; } }
+              @keyframes checkDraw { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
+              @keyframes ringPop { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+              @keyframes textRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+              @keyframes particleOut { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; } }
+              .welcome-particle { position: absolute; border-radius: 50%; animation: particleOut 1.1s ease-out both; }
+            `}</style>
+            <div style={{ position: 'relative', textAlign: 'center', animation: 'welcomeFadeOut 0.4s ease 3.4s both' }}>
+              {[...Array(10)].map((_, i) => {
+                const angle = (i / 10) * Math.PI * 2;
+                const dist = 70 + (i % 3) * 20;
+                return (
+                  <span
+                    key={i}
+                    className="welcome-particle"
+                    style={{
+                      left: '50%', top: '38%', width: 7 + (i % 3) * 2, height: 7 + (i % 3) * 2,
+                      background: i % 2 === 0 ? '#D97757' : '#F2C57C',
+                      animationDelay: `${0.15 + i * 0.02}s`,
+                      '--tx': `${Math.cos(angle) * dist}px`,
+                      '--ty': `${Math.sin(angle) * dist}px`,
+                    }}
+                  />
+                );
+              })}
+              <div style={{
+                width: 76, height: 76, borderRadius: '50%', margin: '0 auto 18px',
+                background: 'linear-gradient(135deg, #D97757, #BD5D3A)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 12px 32px rgba(217,119,87,0.4)', animation: 'ringPop 0.55s cubic-bezier(0.34,1.56,0.64,1) both',
+              }}>
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" style={{ strokeDasharray: 40, animation: 'checkDraw 0.5s ease 0.35s both' }} />
+                </svg>
+              </div>
+              <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontWeight: 600, color: '#FFFFFF', margin: '0 0 6px', animation: 'textRise 0.4s ease 0.5s both' }}>Welcome</h2>
+              <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', margin: 0, animation: 'textRise 0.4s ease 0.62s both' }}>
+                You're all set — unlimited generations, let's go.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="mb-2" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8 }}>
+          <div />
+          <div className="flex items-center justify-center gap-2.5">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+              <path d="M4 4h16v11H8l-4 4V4z" stroke="#D97757" strokeWidth="1.6" strokeLinejoin="round" />
+              <path d="M8 9h2M8 11.5h5" stroke="#D97757" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+            <h1
+              className="text-3xl"
+              style={{ fontFamily: currentLang.rtl ? "'Cairo', sans-serif" : "'Fraunces', serif", fontWeight: 600, color: '#2D2A26' }}
+            >
+              {t.title}
+            </h1>
+          </div>
+          <div className="flex justify-end">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="text-xs rounded-lg px-2 py-1.5 focus:outline-none"
+              style={{ background: '#FFFFFF', border: '1px solid #E4E1D6', color: '#6B6659' }}
+            >
+              {languages.map(l => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <p className="text-sm mb-2" style={{ color: '#87837A', textAlign: 'center' }}>{t.subtitle}</p>
+        <div className="rounded-lg overflow-hidden mb-4">
+          <img
+            src="/images/hero-rr.jpg"
+            alt="More than a reply, a read on what's really going on"
+            style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10 }}
+          />
+        </div>
+        <p style={{
+          margin: '0 0 24px', color: '#8A867B', fontFamily: "'Playfair Display', serif", fontStyle: 'normal',
+          fontWeight: 500, fontSize: 19, lineHeight: 1.4, letterSpacing: '0.01em', textAlign: 'center',
+        }}>
+          More than a reply, a read on what's really going on
+        </p>
+
+        <div className="rounded-xl p-5 space-y-4" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.businessLabel}</label>
+            <input
+              type="text"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              placeholder={t.businessPh}
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+              style={{ background: '#FAF9F4', border: '1px solid #E4E1D6', color: '#2D2A26' }}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.reviewLabel}</label>
+            <textarea
+              value={reviewText}
+              onChange={(e) => setReviewText(e.target.value)}
+              placeholder={t.reviewPh}
+              rows={4}
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
+              style={{ background: '#FAF9F4', border: '1px solid #E4E1D6', color: '#2D2A26' }}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.toneLabel}</label>
+            <div className="flex gap-2">
+              {tones.map(tn => (
+                <button
+                  key={tn.value}
+                  onClick={() => setTone(tn.value)}
+                  className="flex-1 text-xs py-2 rounded-lg font-medium"
+                  style={{
+                    background: tone === tn.value ? '#D97757' : '#FAF9F4',
+                    color: tone === tn.value ? '#FFFFFF' : '#6B6659',
+                    border: '1px solid ' + (tone === tn.value ? '#D97757' : '#E4E1D6'),
+                  }}
+                >
+                  {tn.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.photoLabel} <span style={{ opacity: 0.6, fontWeight: 400 }}>({photos.length}/3)</span></label>
+            <div className="flex items-center gap-2 flex-wrap">
+              {photos.map((p, i) => (
+                <div key={i} style={{ position: 'relative', width: 56, height: 56 }}>
+                  <img src={p.preview} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover' }} />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(i)}
+                    aria-label="Remove photo"
+                    style={{
+                      position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%',
+                      background: '#C0574B', color: '#FFF', border: '2px solid #F5F4EE', fontSize: 11,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {photos.length < 3 && (
+                <label
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer"
+                  style={{ background: '#FAF9F4', border: '1px dashed #E4E1D6', color: '#87837A' }}
+                >
+                  <span style={{ width: 24, height: 24, borderRadius: 6, background: '#F1EFE6', flexShrink: 0 }} />
+                  <span>{t.uploadPhoto}</span>
+                  <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
+                </label>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: '#6B6659' }}>
+              <input
+                type="checkbox"
+                checked={includeEmoji}
+                onChange={(e) => setIncludeEmoji(e.target.checked)}
+                style={{ accentColor: '#D97757' }}
+              />
+              {t.emojiToggle}
+            </label>
+          </div>
+
+          {error && <p className="text-sm" style={{ color: '#B34B3C' }}>{error}</p>}
+
+          <button
+            onClick={handleGenerate}
+            disabled={loading}
+            className="w-full font-medium py-2.5 rounded-lg text-sm transition"
+            style={{
+              background: loading ? '#E4E1D6' : '#D97757',
+              color: loading ? '#87837A' : '#FFFFFF',
+            }}
+          >
+            {loading ? t.generatingBtn : t.generateBtn}
+          </button>
+        </div>
+
+        {result && (
+          <div className="mt-6">
+            {photos.length > 0 && (
+              <div className="flex gap-2 mb-4" style={{ flexWrap: 'wrap' }}>
+                {photos.map((p, i) => (
+                  <img
+                    key={i}
+                    src={p.preview}
+                    alt=""
+                    style={{
+                      width: photos.length === 1 ? '100%' : `calc(${100 / Math.min(photos.length, 3)}% - 6px)`,
+                      aspectRatio: '1.6 / 1', borderRadius: 10, objectFit: 'cover',
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2 mb-1.5">
+              <span
+                className="text-xs font-semibold px-2 py-1 rounded-full"
+                style={{
+                  background: sentimentStyles[result.sentiment]?.bg || '#F1EFE6',
+                  color: sentimentStyles[result.sentiment]?.text || '#6B6659',
+                }}
+              >
+                {sentimentStyles[result.sentiment]?.label || result.sentiment}
+              </span>
+            </div>
+
+            {result.subtext && result.subtext.trim() && (
+              <p className="text-xs italic mb-3" style={{ color: '#87837A' }}>
+                {t.subtextLabel}: {result.subtext}
+              </p>
+            )}
+
+            <h2 className="text-sm font-semibold mb-2" style={{ color: '#D97757' }}>{t.repliesHeading}</h2>
+            <div className="space-y-2">
+              {result.replies.map((reply, idx) => (
+                <div key={idx} className="rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
+                  <p className="text-sm leading-relaxed mb-3" style={{ color: '#2D2A26' }}>{reply}</p>
+                  <button
+                    onClick={() => handleCopy(reply, idx)}
+                    className="text-xs font-medium"
+                    style={{ color: copiedIdx === idx ? '#3D6B4A' : '#A56A45' }}
+                  >
+                    {copiedIdx === idx ? t.copiedBtn : t.copyBtn}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {result.insight && result.insight.trim() && (
+              <div className="mt-4 rounded-xl p-4" style={{ background: '#FBF2E3', border: '1px dashed #E4C9A0' }}>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A56A45" strokeWidth="1.8">
+                    <path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" />
+                  </svg>
+                  <span className="text-xs font-semibold" style={{ color: '#A56A45' }}>For your eyes only</span>
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: '#6B5A3E' }}>{result.insight}</p>
+              </div>
+            )}
+
+            {result.sentiment === 'positive' && !socialPost && (
+              <button
+                onClick={handleGenerateSocialPost}
+                disabled={socialLoading}
+                className="mt-4 w-full text-xs font-medium py-2.5 rounded-lg"
+                style={{ background: '#FFFFFF', border: '1px solid #D97757', color: socialLoading ? '#87837A' : '#D97757' }}
+              >
+                {socialLoading ? t.socialGeneratingBtn : t.socialBtnLabel}
+              </button>
+            )}
+
+            {socialPost && (
+              <div className="mt-4 rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
+                <h3 className="text-xs font-semibold mb-2" style={{ color: '#D97757' }}>{t.socialHeading}</h3>
+                <p className="text-sm leading-relaxed mb-2" style={{ color: '#2D2A26' }}>{socialPost.caption}</p>
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {socialPost.hashtags.map((tag, i) => (
+                    <span key={i} className="text-xs" style={{ color: '#A56A45' }}>#{tag}</span>
+                  ))}
+                </div>
+                <button
+                  onClick={handleCopySocial}
+                  className="text-xs font-medium"
+                  style={{ color: socialCopied ? '#3D6B4A' : '#A56A45' }}
+                >
+                  {socialCopied ? t.copiedBtn : t.copyBtn}
+                </button>
+              </div>
+            )}
+
+            {(result.sentiment === 'negative' || result.sentiment === 'mixed') && !followUpMsg && (
+              <button
+                onClick={handleGenerateFollowUp}
+                disabled={followUpLoading}
+                className="mt-4 w-full text-xs font-medium py-2.5 rounded-lg"
+                style={{ background: '#FFFFFF', border: '1px solid #B34B3C', color: followUpLoading ? '#87837A' : '#B34B3C' }}
+              >
+                {followUpLoading ? t.followUpGeneratingBtn : t.followUpBtnLabel}
+              </button>
+            )}
+
+            {followUpMsg && (
+              <div className="mt-4 rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
+                <h3 className="text-xs font-semibold mb-2" style={{ color: '#B34B3C' }}>{t.followUpHeading}</h3>
+                <p className="text-sm leading-relaxed mb-3" style={{ color: '#2D2A26' }}>{followUpMsg}</p>
+                <button
+                  onClick={handleCopyFollowUp}
+                  className="text-xs font-medium"
+                  style={{ color: followUpCopied ? '#3D6B4A' : '#A56A45' }}
+                >
+                  {followUpCopied ? t.copiedBtn : t.copyBtn}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ maxWidth: 480, margin: '0 auto 16px' }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+            <span className="text-xs" style={{ color: '#87837A' }}>Today's free generations</span>
+            <span className="text-xs" style={{ color: '#87837A', fontWeight: 600 }}>{DAILY_GEN_LIMIT - dailyCount}/{DAILY_GEN_LIMIT} left</span>
+          </div>
+          <div style={{ height: 4, borderRadius: 999, background: '#E4E1D6', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 999, width: `${(dailyCount / DAILY_GEN_LIMIT) * 100}%`,
+              background: dailyCount >= DAILY_GEN_LIMIT ? '#B34B3C' : '#D97757',
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
+          {dailyCount >= DAILY_GEN_LIMIT && (
+            <p className="text-xs text-center" style={{ color: '#B34B3C', marginTop: 8 }}>Today's limit reached — come back tomorrow for 50 more free generations.</p>
+          )}
+        </div>
+
+        {/* ----- FAQ ----- */}
+        <div className="mt-14 pt-10" style={{ borderTop: '1px solid #E4E1D6' }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#2D2A26', textAlign: 'center', margin: '0 0 6px' }}>
+            Frequently asked questions, answered.
+          </h2>
+          <p style={{ fontSize: 13.5, color: '#87837A', textAlign: 'center', margin: '0 0 28px' }}>
+            Everything people usually ask before trying ReviewReply AI.
+          </p>
+          <div className="mx-auto" style={{ maxWidth: 640 }}>
+            {[
+              {
+                q: 'Does this work for Google, Yelp, TripAdvisor, or just one platform?',
+                a: 'Paste a review from anywhere — Google, Yelp, TripAdvisor, Facebook, Amazon, app stores. ReviewReply AI reads the text you give it, it doesn’t need to be connected to any specific platform.',
+              },
+              {
+                q: 'Does it post the reply for me?',
+                a: 'No — it drafts three reply options and you copy the one you like onto the platform yourself. This keeps you in control of what actually goes out under your business’s name.',
+              },
+              {
+                q: 'Will the replies sound like a robot wrote them?',
+                a: 'The AI matches the tone of the original review and gives you three different options — different lengths and registers — so you can pick the one that sounds like you, not a template.',
+              },
+              {
+                q: 'What’s the private note I keep hearing about?',
+                a: 'With every reply, you also get a note only you see — it flags if the review is quietly pointing at a bigger pattern, like a recurring complaint about wait times or a training gap.',
+              },
+              {
+                q: 'What happens after my free preview?',
+                a: 'You get one free reply to try it out, plus 50 free generations every day after that. Buying a license ($79, one time, no subscription) removes the daily cap for good.',
+              },
+            ].map((item, i) => (
+              <div key={i} style={{ borderBottom: '1px solid #E4E1D6' }}>
+                <button
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  style={{
+                    width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                  }}
+                >
+                  <span style={{ fontSize: 14.5, fontWeight: 600, color: '#2D2A26' }}>{item.q}</span>
+                  <span style={{
+                    flexShrink: 0, fontSize: 18, color: '#A56A45', transform: openFaq === i ? 'rotate(45deg)' : 'none',
+                    transition: 'transform 0.2s ease',
+                  }}>+</span>
+                </button>
+                {openFaq === i && (
+                  <p style={{ fontSize: 13.5, color: '#5B564C', lineHeight: 1.6, margin: '0 4px 18px' }}>{item.a}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ----- LIVE FACTS TICKER ----- */}
+        <div className="mt-14 mx-auto" style={{
+          maxWidth: 640, borderRadius: 16, padding: '22px 28px',
+          background: 'linear-gradient(135deg, #FBEFE8, #F5F4EE)', border: '1px solid #EDD9C8',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, minHeight: 60,
+        }}>
+          <span key={`stars-${factIdx}`} style={{ fontSize: 15, flexShrink: 0, animation: 'factFadeIn 0.5s ease' }}>
+            {Array.from({ length: 5 }).map((_, s) => (
+              <span key={s} style={{ color: s < LIVE_FACTS[factIdx].stars ? '#D97757' : '#E4DCD2' }}>&#9733;</span>
+            ))}
+          </span>
+          <span key={factIdx} style={{
+            fontSize: 14, fontWeight: 600, color: '#2D2A26', textAlign: 'center',
+            animation: 'factFadeIn 0.5s ease',
+          }}>
+            {LIVE_FACTS[factIdx].text}
+          </span>
+          <style>{`
+            @keyframes factFadeIn {
+              from { opacity: 0; transform: translateY(6px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+        </div>
+
+        <div className="mt-8" style={{ maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>
+          {rateStars === 0 ? (
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-sm font-medium" style={{ color: '#2D2A26' }}>How's ReviewReply AI working for you?</span>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setRateStars(n)}
+                    aria-label={`Rate ${n} star`}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3 }}
+                  >
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#D97757" strokeWidth="1.6">
+                      <path d="M12 2.5l2.9 6.4 6.9.7-5.2 4.8 1.5 6.9-6.1-3.6-6.1 3.6 1.5-6.9-5.2-4.8 6.9-.7z" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : rateStars >= 4 ? (
+            <div className="flex flex-col items-center gap-2 text-center">
+              <span className="text-sm" style={{ color: '#2D2A26' }}>Thank you! That means a lot.</span>
+              <a
+                href="https://plainwork.website/#rate-us"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium"
+                style={{ color: '#A56A45' }}
+              >
+                Rate us on Plainwork &rarr;
+              </a>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <span className="text-sm text-center" style={{ color: '#2D2A26' }}>Sorry to hear that &mdash; what went wrong?</span>
+              <textarea
+                value={rateProblem}
+                onChange={(e) => setRateProblem(e.target.value)}
+                placeholder="Describe the issue..."
+                rows={3}
+                className="w-full rounded-lg p-2 text-sm"
+                style={{ border: '1px solid #E4E1D6', resize: 'vertical', fontFamily: 'inherit' }}
+              />
+              <a
+                href={`mailto:kssw117@gmail.com?subject=${encodeURIComponent('ReviewReply AI feedback')}&body=${encodeURIComponent(rateProblem)}`}
+                className="text-sm font-medium text-center"
+                style={{ color: '#FFFFFF', background: '#D97757', borderRadius: 999, padding: '8px 0', textDecoration: 'none' }}
+              >
+                Send feedback
+              </a>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col items-center justify-center gap-1.5 mt-10 pt-6" style={{ borderTop: '1px solid #E4E1D6' }}>
+          <div className="flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#87837A" strokeWidth="1.5">
+              <path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3z" />
+            </svg>
+            <span className="text-xs" style={{ color: '#87837A' }}>Powered by Claude &middot; Plainwork by Ksenia</span>
+          </div>
+          <div className="flex items-center gap-3 mt-1">
+            <a href="/terms.html" className="text-xs" style={{ color: '#A56A45' }}>Terms</a>
+            <a href="/privacy.html" className="text-xs" style={{ color: '#A56A45' }}>Privacy</a>
+            <a href="/refund.html" className="text-xs" style={{ color: '#A56A45' }}>Refunds</a>
+          </div>
+          <div className="mt-1">
+            {!showSupportEmail ? (
+              <button
+                onClick={() => setShowSupportEmail(true)}
+                className="text-xs"
+                style={{ color: '#A56A45', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Support
+              </button>
+            ) : (
+              <a href="mailto:kssw117@gmail.com" className="text-xs" style={{ color: '#A56A45' }}>
+                kssw117@gmail.com
+              </a>
+            )}
+          </div>
+          <p className="text-xs" style={{ color: '#87837A', textAlign: 'center', marginTop: 10, opacity: 0.8, fontSize: 10.5 }}>
+            Грезина Ксения Викторовна (Ksenia Grezina) &middot; Tax ID (ИНН) 710607167655
+          </p>
+        </div>
+      </div>
+
+      {/* Плавающая кнопка "как пользоваться" — в углу экрана */}
+      <button
+        onClick={() => {
+          playPopSound(!showHelpBubble);
+          setShowHelpBubble(v => !v);
+        }}
+        aria-label="How it works"
+        style={{
+          position: 'fixed', bottom: 20, right: 20, width: 48, height: 48, borderRadius: '50%',
+          background: 'linear-gradient(90deg, #D97757, #BD5D3A)', color: '#FFF', border: 'none',
+          cursor: 'pointer', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 4px 14px rgba(189,93,58,0.35)', zIndex: 50,
+        }}
+      >
+        {showHelpBubble ? '\u2715' : '?'}
+      </button>
+
+      {showHelpBubble && (
+        <div
+          style={{
+            position: 'fixed', bottom: 80, right: 20, width: 300, maxWidth: 'calc(100vw - 40px)',
+            background: '#FFF', borderRadius: 14, padding: 18, boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+            border: '1px solid #EDEAE0', zIndex: 50,
+          }}
+        >
+          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: '#2D2A26' }}>How ReviewReply AI works</p>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: '#5B564C' }}>
+            Paste a customer review. The AI reads it, checks the tone, and drafts three reply options, plus a private note only you see. Attach up to 3 photos for extra context. Turn a great review into a social post in one click.
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
