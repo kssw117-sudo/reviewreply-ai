@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
 
+// Ответ сервера о пробной попытке или дневном лимите (считаются на сервере).
+function guardError(data) {
+  if (data && (data.code === 'trial_used' || data.code === 'limit_reached')) {
+    const e = new Error(data.error || data.code);
+    e.guardMessage = data.error;
+    e.guardCode = data.code;
+    return e;
+  }
+  return null;
+}
+
+
 // Маленький помощник для IndexedDB — используем для фото, т.к. до трёх
 // изображений в base64 легко превышают лимит localStorage (~5-10 МБ)
 function idbOpen() {
@@ -316,7 +328,15 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
         body: JSON.stringify({ licenseCode, content, trial: isTrial })
       });
 
-      if (response.status === 403) {
+      if (response.status === 403 || response.status === 429) {
+        const ge = guardError(await response.json().catch(() => ({})));
+        if (ge) {
+          if (ge.guardCode === 'trial_used') {
+            localStorage.setItem('reviewreply_trial_count', String(FREE_TRIAL_LIMIT));
+            setTrialCount(FREE_TRIAL_LIMIT);
+          }
+          throw ge;
+        }
         throw new Error('license');
       }
 
@@ -336,7 +356,7 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
         setUnlocked(false);
         setLicenseError(t.licenseInvalid);
       } else {
-        setError(t.genError);
+        setError(err.guardMessage || t.genError);
       }
     } finally {
       setLoading(false);
@@ -401,12 +421,13 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
         body: JSON.stringify({ licenseCode, content: socialPrompt, trial: !unlocked && trialCount <= FREE_TRIAL_LIMIT })
       });
       const data = await response.json();
+      { const ge = guardError(data); if (ge) throw ge; }
       const text = data.content.map(b => b.text || '').join('');
       const clean = text.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(clean);
       setSocialPost(parsed);
     } catch (err) {
-      setError(t.genError);
+      setError(err.guardMessage || t.genError);
     } finally {
       setSocialLoading(false);
     }
@@ -448,12 +469,13 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
         body: JSON.stringify({ licenseCode, content: followUpPrompt, trial: !unlocked && trialCount <= FREE_TRIAL_LIMIT })
       });
       const data = await response.json();
+      { const ge = guardError(data); if (ge) throw ge; }
       const text = data.content.map(b => b.text || '').join('');
       const clean = text.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(clean);
       setFollowUpMsg(parsed.message);
     } catch (err) {
-      setError(t.genError);
+      setError(err.guardMessage || t.genError);
     } finally {
       setFollowUpLoading(false);
     }
