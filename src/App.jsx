@@ -495,581 +495,629 @@ Respond ONLY with valid JSON, no markdown, no code fences, in this exact shape:
     mixed: { bg: '#FBF2E3', text: '#A56A45', label: t.mixedLabel },
   };
 
-  const bodyFont = currentLang.rtl ? "'Cairo', sans-serif" : 'inherit';
+  const bodyFont = currentLang.rtl ? "'Cairo', 'Inter', sans-serif" : "'Inter', system-ui, sans-serif";
+
+  // Живой пример на первом экране: вкладки тона переключаются сами
+  const [demoTab, setDemoTab] = useState(0);
+  const [langOpen, setLangOpen] = useState(false);
+  useEffect(() => {
+    const id = setInterval(() => setDemoTab(i => (i + 1) % 3), 4200);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    if (!langOpen) return;
+    const close = () => setLangOpen(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [langOpen]);
+
+  const DEMO = [
+    { tab: 'Warm', text: "Maya, thank you for telling us, and I'm sorry. A 25-minute wait with no word from us isn't okay, especially on a Saturday. We've added a second barista on weekend mornings. Your next coffee is on us." },
+    { tab: 'Professional', text: 'Thank you for your feedback, Maya. A 25-minute wait without an apology falls short of our standard. We have increased weekend staffing to prevent this, and we would welcome the chance to serve you again.' },
+    { tab: 'Short', text: "Maya, you're right, and we're sorry. We've added staff on weekend mornings. Hope to see you again soon." },
+  ];
+
+  const scrollTo = (id) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const FEATURES = [
+    { title: 'Three real replies', text: 'Different structure, not synonyms. Each one names what the customer actually said.', icon: 'M4 6h16M4 12h10M4 18h13' },
+    { title: 'A private note for you', text: 'One line on the pattern behind the review, like weekend wait times or a training gap.', icon: 'M12 3l2.4 5 5.6.8-4 3.9 1 5.5-5-2.7-5 2.7 1-5.5-4-3.9 5.6-.8z' },
+    { title: 'Reads between the lines', text: 'Flags polite words that hide real frustration, or praise that sounds lukewarm.', icon: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z' },
+    { title: 'Five stars into a post', text: 'Turn a happy review into an Instagram or TikTok caption with hashtags in one click.', icon: 'M4 4h16v16H4zM4 15l5-5 4 4 3-3 4 4' },
+    { title: 'Private follow-up', text: 'For a bad review, a direct message that actually tries to win the customer back.', icon: 'M4 5h16v11H8l-4 4z' },
+    { title: '20 languages, photos too', text: 'Reply in your language whatever language the review is in. Attach the photos the customer posted.', icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2c3 3 3 17 0 20M12 2c-3 3-3 17 0 20' },
+  ];
+
+  const FAQ = [
+    { q: 'Does this work for Google, Yelp, TripAdvisor, or just one platform?', a: 'Paste a review from anywhere: Google, Yelp, TripAdvisor, Booking.com, Facebook, Amazon, app stores. ReviewReply AI reads the text you give it and doesn’t need to be connected to any platform.' },
+    { q: 'Does it post the reply for me?', a: 'No. It drafts three options and you copy the one you like onto the platform yourself, so you stay in control of what goes out under your name.' },
+    { q: 'Will the replies sound like a robot wrote them?', a: 'Each reply picks up specific details from the review and you get three different structures and lengths, so you can choose the one that sounds like you, not a template.' },
+    { q: 'What is the private note?', a: 'With every reply you get a note only you see. It flags when a review quietly points at a bigger pattern, like a recurring complaint about wait times or a training gap.' },
+    { q: 'What happens after my free preview?', a: 'You get one free reply to try it out. A license is $79, one time, no subscription, and gives you unlimited replies.' },
+  ];
+
+  const C = { bg: '#F5F4EE', card: '#FFFFFF', ink: '#2D2A26', mute: '#87837A', soft: '#6B6659', line: '#E4E1D6', field: '#FAF9F4', acc: '#D97757', acc2: '#BD5D3A', cream: '#FBF2E3', tint: '#FBEFE8' };
 
   return (
-    <div className="min-h-screen py-10 px-4 relative overflow-hidden" dir={currentLang.rtl ? 'rtl' : 'ltr'} style={{ background: '#F5F4EE', fontFamily: bodyFont }}>
+    <div className="rr" dir={currentLang.rtl ? 'rtl' : 'ltr'} style={{ background: C.bg, fontFamily: bodyFont, color: C.ink, minHeight: '100vh' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Playfair+Display:wght@500&family=Cairo:wght@400;700&display=swap');
-        @keyframes floatBubble { 0%, 100% { transform: translate(0, 0) rotate(-4deg); } 50% { transform: translate(12px, -18px) rotate(4deg); } }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Cairo:wght@400;700&display=swap');
+        .rr *{box-sizing:border-box}
+        .rr a{text-decoration:none}
+        .rr-wrap{max-width:1160px;margin:0 auto;padding:0 28px}
+        .rr-nav{display:flex;align-items:center;justify-content:space-between;height:76px;gap:16px}
+        .rr-brand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:16.5px;letter-spacing:-.01em;color:${C.ink};background:none;border:0;cursor:pointer;padding:0;font-family:inherit}
+        .rr-mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,${C.acc},${C.acc2});display:grid;place-items:center;box-shadow:0 6px 16px -6px rgba(189,93,58,.6)}
+        .rr-links{display:flex;align-items:center;gap:26px;font-size:14px;color:${C.soft}}
+        .rr-links button.l{background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:0}
+        .rr-links button.l:hover{color:${C.ink}}
+        .rr-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;font-family:inherit;font-weight:600;border-radius:999px;transition:transform .15s ease,box-shadow .15s ease,background .15s ease}
+        .rr-btn:hover{transform:translateY(-1px)}
+        .rr-dark{background:${C.ink};color:#fff;padding:11px 20px;font-size:14px}
+        .rr-acc{background:linear-gradient(135deg,${C.acc},${C.acc2});color:#fff;padding:16px 28px;font-size:15.5px;box-shadow:0 12px 28px -10px rgba(189,93,58,.6)}
+        .rr-ghost{background:none;color:${C.ink};font-size:15px;font-weight:600;padding:14px 6px}
+        .rr-lang{position:relative}
+        .rr-lang>button{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid ${C.line};border-radius:999px;padding:8px 13px;font:inherit;font-size:13px;color:${C.soft};cursor:pointer}
+        .rr-menu{position:absolute;top:calc(100% + 8px);inset-inline-end:0;background:#fff;border:1px solid ${C.line};border-radius:14px;box-shadow:0 20px 50px -18px rgba(45,42,38,.35);padding:6px;width:190px;max-height:320px;overflow:auto;z-index:40}
+        .rr-menu button{display:block;width:100%;text-align:start;background:none;border:0;padding:8px 11px;border-radius:9px;font:inherit;font-size:13.5px;color:${C.ink};cursor:pointer}
+        .rr-menu button:hover,.rr-menu button.on{background:${C.tint};color:${C.acc2}}
+        .rr-hero{display:grid;grid-template-columns:1.02fr 1fr;gap:56px;align-items:center;padding:52px 0 80px;position:relative}
+        .rr-pill{display:inline-flex;align-items:center;gap:9px;border:1px solid ${C.line};background:#fff;border-radius:999px;padding:5px 13px 5px 5px;font-size:13px;color:${C.soft}}
+        .rr-pill b{background:${C.tint};color:${C.acc2};border-radius:999px;padding:3px 10px;font-weight:600;font-size:12px}
+        .rr h1{font-size:60px;line-height:1.03;letter-spacing:-.04em;margin:22px 0 20px;font-weight:800}
+        .rr h1 em{font-style:normal;background:linear-gradient(135deg,${C.acc},${C.acc2});-webkit-background-clip:text;background-clip:text;color:transparent}
+        .rr-lead{font-size:19px;line-height:1.6;color:${C.soft};max-width:500px;margin:0 0 32px}
+        .rr-ctas{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+        .rr-trust{display:flex;gap:22px;margin-top:32px;font-size:13.5px;color:${C.soft};flex-wrap:wrap}
+        .rr-trust span{display:flex;gap:7px;align-items:center}
+        .rr-trust i{width:17px;height:17px;border-radius:50%;background:#EAF3EC;color:#3D6B4A;display:grid;place-items:center;font-style:normal;font-size:10px;font-weight:700}
+        .rr-stage{position:relative;height:540px}
+        .rr-glow{position:absolute;inset:30px -30px 0 10px;background:radial-gradient(55% 50% at 60% 45%,rgba(217,119,87,.22),rgba(217,119,87,0) 70%);pointer-events:none}
+        .rr-card{position:absolute;background:#fff;border:1px solid ${C.line};border-radius:20px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 28px 60px -26px rgba(80,50,30,.32)}
+        .rr-review{inset-inline-start:0;top:0;width:345px;padding:20px 22px;transform:rotate(-2deg);animation:rrFade .8s ease both}
+        .rr-out{inset-inline-end:0;top:165px;width:430px;padding:20px 22px;animation:rrIn .7s ease .25s both}
+        .rr-note{inset-inline-start:36px;bottom:0;width:360px;padding:17px 19px;background:${C.ink};border:0;color:#F5F1EA;animation:rrIn .7s ease .5s both}
+        .rr-time{position:absolute;inset-inline-end:14px;top:112px;background:#fff;border:1px solid ${C.line};border-radius:999px;padding:8px 15px;font-size:13px;font-weight:600;box-shadow:0 12px 30px -14px rgba(0,0,0,.25);animation:rrIn .7s ease .7s both}
+        .rr-time span{color:#3D6B4A}
+        .rr-tabs{display:flex;gap:6px;margin-bottom:14px}
+        .rr-tabs span{font-size:12.5px;font-weight:500;padding:6px 12px;border-radius:999px;color:${C.soft};border:1px solid ${C.line};transition:all .3s ease}
+        .rr-tabs span.on{background:${C.ink};color:#fff;border-color:${C.ink}}
+        .rr-lbl{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:${C.mute};font-weight:600;display:flex;justify-content:space-between;gap:10px}
+        .rr-reply{font-size:14.5px;line-height:1.62;margin:9px 0 16px;min-height:94px;animation:rrFade .5s ease both}
+        .rr-acts{display:flex;gap:8px}.rr-acts span{font-size:12.5px;font-weight:600;padding:8px 13px;border-radius:10px;background:${C.field};border:1px solid ${C.line}}
+        .rr-acts span.p{background:${C.acc};border-color:${C.acc};color:#fff}
+        .rr-strip{border-top:1px solid ${C.line};border-bottom:1px solid ${C.line};padding:22px 0;display:flex;align-items:center;justify-content:space-between;gap:12px 22px;flex-wrap:wrap;color:#A8A397;font-size:15px;font-weight:600}
+        .rr-strip small{font-weight:500;font-size:13px;color:${C.mute}}
+        .rr-sec{padding:96px 0 0}
+        .rr-eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:${C.acc2};font-weight:700;text-align:center;margin:0 0 12px}
+        .rr h2{font-size:42px;line-height:1.1;letter-spacing:-.035em;margin:0 auto 14px;text-align:center;font-weight:800;max-width:720px}
+        .rr-sub{font-size:17px;color:${C.soft};text-align:center;margin:0 auto 48px;max-width:560px;line-height:1.55}
+        .rr-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+        .rr-box{background:#fff;border:1px solid ${C.line};border-radius:20px;padding:28px;transition:transform .2s ease,box-shadow .2s ease}
+        .rr-box:hover{transform:translateY(-3px);box-shadow:0 24px 50px -30px rgba(80,50,30,.35)}
+        .rr-num{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,${C.acc},${C.acc2});color:#fff;display:grid;place-items:center;font-weight:700;font-size:14px}
+        .rr-ico{width:42px;height:42px;border-radius:12px;background:${C.tint};display:grid;place-items:center}
+        .rr-box h3{font-size:18px;margin:20px 0 8px;letter-spacing:-.015em;font-weight:700}
+        .rr-box p{margin:0;color:${C.soft};font-size:14.5px;line-height:1.6}
+        .rr-tool{max-width:760px;margin:0 auto}
+        .rr-split{display:grid;grid-template-columns:1fr 1.05fr;gap:40px;align-items:center;margin-bottom:36px}
+        .rr-art{width:100%;height:auto;display:block}
+        .rr-form{background:#fff;border:1px solid ${C.line};border-radius:24px;padding:30px;box-shadow:0 30px 70px -40px rgba(80,50,30,.4)}
+        .rr-form label.f{display:block;font-size:13px;font-weight:600;margin-bottom:7px;color:${C.ink}}
+        .rr-in{width:100%;border-radius:12px;padding:12px 14px;font:inherit;font-size:14.5px;background:${C.field};border:1px solid ${C.line};color:${C.ink};outline:none;transition:border-color .15s ease,box-shadow .15s ease}
+        .rr-in:focus{border-color:${C.acc};box-shadow:0 0 0 4px rgba(217,119,87,.14);background:#fff}
+        .rr-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:${C.field};border:1px solid ${C.line};border-radius:12px;padding:4px}
+        .rr-seg button{border:0;border-radius:9px;padding:10px 0;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;background:none;color:${C.soft};transition:all .15s ease}
+        .rr-seg button.on{background:#fff;color:${C.acc2};box-shadow:0 2px 8px -2px rgba(0,0,0,.12)}
+        .rr-res{background:#fff;border:1px solid ${C.line};border-radius:18px;padding:20px 22px}
+        .rr-price{display:grid;grid-template-columns:1.1fr 1fr;gap:0;background:#fff;border:1px solid ${C.line};border-radius:28px;overflow:hidden;max-width:920px;margin:0 auto;box-shadow:0 30px 70px -40px rgba(80,50,30,.4)}
+        .rr-price .l{padding:44px}
+        .rr-price .r{padding:44px;background:linear-gradient(160deg,${C.tint},${C.cream});display:flex;flex-direction:column;justify-content:center}
+        .rr-price ul{list-style:none;padding:0;margin:22px 0 0;display:grid;gap:12px}
+        .rr-price li{display:flex;gap:10px;font-size:15px;color:${C.ink}}
+        .rr-price li i{flex-shrink:0;width:20px;height:20px;border-radius:50%;background:${C.acc};color:#fff;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700;margin-top:1px}
+        .rr-faq{max-width:760px;margin:0 auto}
+        .rr-faq button{width:100%;text-align:start;background:none;border:0;cursor:pointer;padding:22px 2px;display:flex;align-items:center;justify-content:space-between;gap:16px;font:inherit}
+        .rr-final{margin:110px 0 0;border-radius:32px;padding:64px 40px;text-align:center;background:${C.ink};color:#fff;position:relative;overflow:hidden}
+        .rr-final:before{content:'';position:absolute;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,rgba(217,119,87,.45),rgba(217,119,87,0) 65%);top:-260px;left:50%;transform:translateX(-50%)}
+        .rr-final>*{position:relative}
+        .rr-foot{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;padding:36px 0 18px;font-size:13px;color:${C.mute}}
+        .rr-foot a,.rr-foot button{color:${C.soft};font-size:13px;background:none;border:0;cursor:pointer;font-family:inherit;padding:0}
+        @keyframes rrIn{from{opacity:0;transform:translateY(14px)}to{opacity:1}}
+                @keyframes rrFade{from{opacity:0}to{opacity:1}}
+        @media(max-width:900px){
+          .rr-wrap{padding:0 16px}
+          .rr-links .hide{display:none}
+          .rr-links{gap:10px}
+          .rr-hero{grid-template-columns:1fr;gap:36px;padding:24px 0 52px}
+          .rr h1{font-size:40px}
+          .rr-lead{font-size:17px}
+          .rr-stage{height:auto;display:flex;flex-direction:column;gap:14px}
+          .rr-card,.rr-time{position:relative;inset:auto;width:auto;top:auto;bottom:auto}
+          .rr-review{transform:none}
+          .rr-time{display:none}
+          .rr-glow{display:none}
+          .rr-sec{padding-top:64px}
+          .rr h2{font-size:30px}
+          .rr-sub{margin-bottom:32px;font-size:16px}
+          .rr-grid3{grid-template-columns:1fr}
+          .rr-split{grid-template-columns:1fr;gap:8px;margin-bottom:20px}
+          .rr-form{padding:20px;border-radius:20px}
+          .rr-price{grid-template-columns:1fr}
+          .rr-price .l,.rr-price .r{padding:28px}
+          .rr-final{padding:44px 22px;margin-top:72px;border-radius:24px}
+          .rr-strip{justify-content:flex-start;font-size:14px}
+        }
       `}</style>
 
-      <div className="absolute rounded-full pointer-events-none" style={{ width: 280, height: 280, background: '#D97757', filter: 'blur(90px)', opacity: 0.10, top: -80, left: -60 }} />
-      <div className="absolute rounded-full pointer-events-none" style={{ width: 240, height: 240, background: '#BD5D3A', filter: 'blur(90px)', opacity: 0.10, bottom: -60, right: -40 }} />
+      {showWelcome && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(45,42,38,0.5)', backdropFilter: 'blur(4px)', animation: 'welcomeFadeIn 0.4s ease both',
+        }}>
+          <style>{`
+            @keyframes welcomeFadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes welcomeFadeOut { to { opacity: 0; } }
+            @keyframes checkDraw { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
+            @keyframes ringPop { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+            @keyframes textRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes particleOut { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; } }
+            .welcome-particle { position: absolute; border-radius: 50%; animation: particleOut 1.1s ease-out both; }
+          `}</style>
+          <div style={{ position: 'relative', textAlign: 'center', animation: 'welcomeFadeOut 0.4s ease 3.4s both' }}>
+            {[...Array(10)].map((_, i) => {
+              const angle = (i / 10) * Math.PI * 2;
+              const dist = 70 + (i % 3) * 20;
+              return (
+                <span key={i} className="welcome-particle" style={{
+                  left: '50%', top: '38%', width: 7 + (i % 3) * 2, height: 7 + (i % 3) * 2,
+                  background: i % 2 === 0 ? '#D97757' : '#F2C57C', animationDelay: `${0.15 + i * 0.02}s`,
+                  '--tx': `${Math.cos(angle) * dist}px`, '--ty': `${Math.sin(angle) * dist}px`,
+                }} />
+              );
+            })}
+            <div style={{
+              width: 76, height: 76, borderRadius: '50%', margin: '0 auto 18px',
+              background: 'linear-gradient(135deg, #D97757, #BD5D3A)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 12px 32px rgba(217,119,87,0.4)', animation: 'ringPop 0.55s cubic-bezier(0.34,1.56,0.64,1) both',
+            }}>
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" style={{ strokeDasharray: 40, animation: 'checkDraw 0.5s ease 0.35s both' }} />
+              </svg>
+            </div>
+            <h2 style={{ fontSize: 28, fontWeight: 800, color: '#FFFFFF', margin: '0 0 6px', animation: 'textRise 0.4s ease 0.5s both' }}>Welcome</h2>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', margin: 0, animation: 'textRise 0.4s ease 0.62s both' }}>
+              You're all set — unlimited replies, let's go.
+            </p>
+          </div>
+        </div>
+      )}
 
-      {/* Плавающие значки речевого пузыря — декоративные, позади формы */}
-      <svg className="absolute pointer-events-none" style={{ top: '16%', left: '5%', width: 90, height: 90, opacity: 0.2, zIndex: 0, animation: 'floatBubble 10s ease-in-out infinite' }} viewBox="0 0 24 24" fill="none">
-        <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" fill="#D97757" />
-      </svg>
-      <svg className="absolute pointer-events-none" style={{ top: '60%', right: '6%', width: 64, height: 64, opacity: 0.2, zIndex: 0, animation: 'floatBubble 13s ease-in-out infinite', animationDelay: '-4s' }} viewBox="0 0 24 24" fill="none">
-        <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" fill="#BD5D3A" />
-      </svg>
-      <svg className="absolute pointer-events-none" style={{ top: '6%', right: '10%', width: 44, height: 44, opacity: 0.2, zIndex: 0, animation: 'floatBubble 8s ease-in-out infinite', animationDelay: '-2s' }} viewBox="0 0 24 24" fill="none">
-        <path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" fill="#C0574B" />
-      </svg>
-
-      <div className="max-w-xl mx-auto relative" style={{ zIndex: 1 }}>
-        {!unlocked && (
-          <div className="rounded-lg p-3 mb-4" style={{ background: trialCount >= FREE_TRIAL_LIMIT ? '#FDECEC' : '#FDF3E8', border: `1px solid ${trialCount >= FREE_TRIAL_LIMIT ? '#F3C4C4' : '#F2D9B0'}` }}>
-            {trialCount >= FREE_TRIAL_LIMIT ? (
-              <div className="flex items-start gap-2.5">
-                <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: '50%', marginTop: 1, background: '#D97757', display: 'inline-block' }} />
-                <div style={{ flex: 1 }}>
-                  <p className="text-sm" style={{ color: '#8A4A38', margin: '0 0 10px', fontWeight: 600 }}>Your free preview is over. Enter your code whenever you're ready to keep going.</p>
-                  <a
-                    href="/unlock.html"
-                    className="inline-block font-medium px-4 py-2 rounded-lg text-sm"
-                    style={{ background: '#D97757', color: '#FFFFFF', textDecoration: 'none' }}
-                  >
-                    Enter your code →
-                  </a>
-                  <a href="/buy.html" className="block text-xs mt-2" style={{ color: '#A56A45' }}>{t.noCodeText}</a>
+      <div className="rr-wrap">
+        {/* ----- NAV ----- */}
+        <nav className="rr-nav">
+          <button className="rr-brand" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <span className="rr-mark">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h16v11H8l-4 4V4z" /><path d="M8 9h2M8 11.5h5" />
+              </svg>
+            </span>
+            ReviewReply AI
+          </button>
+          <div className="rr-links">
+            <button className="l hide" onClick={() => scrollTo('how')}>How it works</button>
+            <button className="l hide" onClick={() => scrollTo('pricing')}>Pricing</button>
+            <button className="l hide" onClick={() => scrollTo('faq')}>FAQ</button>
+            <div className="rr-lang" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setLangOpen(v => !v)} aria-label={t.languageLabel}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2c3 3 3 17 0 20M12 2c-3 3-3 17 0 20" /></svg>
+                {currentLang.label}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+              {langOpen && (
+                <div className="rr-menu">
+                  {languages.map(l => (
+                    <button key={l.code} className={l.code === language ? 'on' : ''} onClick={() => { setLanguage(l.code); setLangOpen(false); }}>{l.label}</button>
+                  ))}
                 </div>
+              )}
+            </div>
+            <button className="rr-btn rr-dark hide" onClick={() => scrollTo('try')}>Try it free</button>
+          </div>
+        </nav>
+
+        {/* ----- HERO ----- */}
+        <section className="rr-hero">
+          <div>
+            <span className="rr-pill"><b>New</b> Reads the problem behind the review</span>
+            <h1>Answer every review <em>like you had all day.</em></h1>
+            <p className="rr-lead">
+              {language === 'en'
+                ? 'Paste a review from Google, Yelp or TripAdvisor. Get three replies that sound like you, plus a private note on what the customer is really telling you.'
+                : t.subtitle}
+            </p>
+            <div className="rr-ctas">
+              <button className="rr-btn rr-acc" onClick={() => scrollTo('try')}>Reply to a review free →</button>
+              <button className="rr-btn rr-ghost" onClick={() => scrollTo('how')}>See how it works</button>
+            </div>
+            <div className="rr-trust">
+              <span><i>✓</i>No sign-up</span>
+              <span><i>✓</i>20 languages</span>
+              <span><i>✓</i>One payment, no subscription</span>
+            </div>
+          </div>
+
+          <div className="rr-stage" aria-hidden="true">
+            <div className="rr-glow" />
+            <div className="rr-card rr-review">
+              <span style={{ position: 'absolute', insetInlineEnd: 16, top: 18, fontSize: 11, fontWeight: 600, color: C.soft, background: C.field, border: `1px solid ${C.line}`, borderRadius: 7, padding: '3px 8px' }}>Google</span>
+              <div style={{ display: 'flex', gap: 11, alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#E9E2F5', color: '#5B4A9A', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 14 }}>MR</div>
+                <div><div style={{ fontSize: 14, fontWeight: 600 }}>Maya R.</div><div style={{ fontSize: 12, color: C.mute }}>2 days ago</div></div>
               </div>
-            ) : (
-              <div className="flex items-center justify-center gap-2.5">
-                <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: '50%', background: '#D97757', display: 'inline-block' }} />
-                <p className="text-sm" style={{ color: '#8A6B1A', margin: 0 }}>Try it free — your first generation is on us. No code needed.</p>
+              <div style={{ color: '#E8A33B', letterSpacing: 2, fontSize: 15 }}>★★<span style={{ color: '#DDD6CA' }}>★★★</span></div>
+              <p style={{ margin: '8px 0 0', fontSize: 14, lineHeight: 1.55, color: '#3A3732' }}>Coffee was great but we waited 25 minutes on Saturday and nobody even said sorry. Probably won't come back on a weekend.</p>
+            </div>
+
+            <div className="rr-time">Written in <span>4 seconds</span></div>
+
+            <div className="rr-card rr-out">
+              <div className="rr-tabs">
+                {DEMO.map((d, i) => <span key={d.tab} className={i === demoTab ? 'on' : ''}>{d.tab}</span>)}
+              </div>
+              <div className="rr-lbl"><span>Suggested reply</span><span>{demoTab + 1} of 3</span></div>
+              <p key={demoTab} className="rr-reply">{DEMO[demoTab].text}</p>
+              <div className="rr-acts"><span className="p">Copy reply</span><span>Turn into DM</span></div>
+            </div>
+
+            <div className="rr-card rr-note">
+              <div className="rr-lbl" style={{ color: '#B9B2A6' }}><span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#F08A5D', marginInlineEnd: 7 }} />Private note, only you see this</span></div>
+              <p style={{ margin: '8px 0 0', fontSize: 13.5, lineHeight: 1.55 }}>The coffee isn't the problem. Weekend wait times and nobody acknowledging the delay are. Worth a staffing look before this repeats.</p>
+            </div>
+          </div>
+        </section>
+
+        <div className="rr-strip">
+          <small>Works with reviews from</small>
+          <span>Google</span><span>Yelp</span><span>TripAdvisor</span><span>Booking.com</span><span>Trustpilot</span><span>Facebook</span><span>App Store</span>
+        </div>
+
+        {/* ----- HOW IT WORKS ----- */}
+        <section id="how" className="rr-sec">
+          <p className="rr-eyebrow">How it works</p>
+          <h2>From review to reply in three steps</h2>
+          <p className="rr-sub">No account, no setup. It takes less time than reading the review twice.</p>
+          <div className="rr-grid3">
+            {[
+              ['Paste the review', 'Any platform, any language. Add the photos the customer posted if there are any.'],
+              ['Pick a tone', 'Warm, professional or short. Every version names the real issue instead of a template apology.'],
+              ['Copy and post', 'Plus a private note on what keeps coming up, so you fix the cause, not just the reply.'],
+            ].map(([h, p], i) => (
+              <div key={h} className="rr-box"><div className="rr-num">{i + 1}</div><h3>{h}</h3><p>{p}</p></div>
+            ))}
+          </div>
+        </section>
+
+        {/* ----- TOOL ----- */}
+        <section id="try" className="rr-sec">
+          <p className="rr-eyebrow">Try it now</p>
+          <h2>Paste a real review</h2>
+          <p className="rr-sub">{!unlocked && trialCount < FREE_TRIAL_LIMIT ? 'Your first reply is free. No code, no sign-up.' : 'Three replies and a private note in a few seconds.'}</p>
+
+          <div className="rr-tool">
+            {!unlocked && trialCount >= FREE_TRIAL_LIMIT && (
+              <div style={{ background: '#FDECEC', border: '1px solid #F3C4C4', borderRadius: 16, padding: '16px 18px', marginBottom: 16, display: 'flex', gap: 14, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <p style={{ color: '#8A4A38', margin: 0, fontWeight: 600, fontSize: 14 }}>Your free preview is over. Enter your code whenever you're ready to keep going.</p>
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                  <a href="/buy.html" style={{ color: '#A56A45', fontSize: 13.5, fontWeight: 600 }}>{t.noCodeText}</a>
+                  <a href="/unlock.html" className="rr-btn" style={{ background: C.acc, color: '#fff', padding: '10px 18px', fontSize: 13.5 }}>Enter your code →</a>
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {showWelcome && (
-          <div style={{
-            position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(45,42,38,0.5)', backdropFilter: 'blur(4px)', animation: 'welcomeFadeIn 0.4s ease both',
-          }}>
-            <style>{`
-              @keyframes welcomeFadeIn { from { opacity: 0; } to { opacity: 1; } }
-              @keyframes welcomeFadeOut { to { opacity: 0; } }
-              @keyframes checkDraw { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
-              @keyframes ringPop { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-              @keyframes textRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-              @keyframes particleOut { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; } }
-              .welcome-particle { position: absolute; border-radius: 50%; animation: particleOut 1.1s ease-out both; }
-            `}</style>
-            <div style={{ position: 'relative', textAlign: 'center', animation: 'welcomeFadeOut 0.4s ease 3.4s both' }}>
-              {[...Array(10)].map((_, i) => {
-                const angle = (i / 10) * Math.PI * 2;
-                const dist = 70 + (i % 3) * 20;
-                return (
-                  <span
-                    key={i}
-                    className="welcome-particle"
-                    style={{
-                      left: '50%', top: '38%', width: 7 + (i % 3) * 2, height: 7 + (i % 3) * 2,
-                      background: i % 2 === 0 ? '#D97757' : '#F2C57C',
-                      animationDelay: `${0.15 + i * 0.02}s`,
-                      '--tx': `${Math.cos(angle) * dist}px`,
-                      '--ty': `${Math.sin(angle) * dist}px`,
-                    }}
-                  />
-                );
-              })}
-              <div style={{
-                width: 76, height: 76, borderRadius: '50%', margin: '0 auto 18px',
-                background: 'linear-gradient(135deg, #D97757, #BD5D3A)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 12px 32px rgba(217,119,87,0.4)', animation: 'ringPop 0.55s cubic-bezier(0.34,1.56,0.64,1) both',
-              }}>
-                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" style={{ strokeDasharray: 40, animation: 'checkDraw 0.5s ease 0.35s both' }} />
-                </svg>
-              </div>
-              <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontWeight: 600, color: '#FFFFFF', margin: '0 0 6px', animation: 'textRise 0.4s ease 0.5s both' }}>Welcome</h2>
-              <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', margin: 0, animation: 'textRise 0.4s ease 0.62s both' }}>
-                You're all set — unlimited generations, let's go.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="mb-2" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8 }}>
-          <div />
-          <div className="flex items-center justify-center gap-2.5">
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
-              <path d="M4 4h16v11H8l-4 4V4z" stroke="#D97757" strokeWidth="1.6" strokeLinejoin="round" />
-              <path d="M8 9h2M8 11.5h5" stroke="#D97757" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
-            <h1
-              className="text-3xl"
-              style={{ fontFamily: currentLang.rtl ? "'Cairo', sans-serif" : "'Fraunces', serif", fontWeight: 600, color: '#2D2A26' }}
-            >
-              {t.title}
-            </h1>
-          </div>
-          <div className="flex justify-end">
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="text-xs rounded-lg px-2 py-1.5 focus:outline-none"
-              style={{ background: '#FFFFFF', border: '1px solid #E4E1D6', color: '#6B6659' }}
-            >
-              {languages.map(l => (
-                <option key={l.code} value={l.code}>{l.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <p className="text-sm mb-2" style={{ color: '#87837A', textAlign: 'center' }}>{t.subtitle}</p>
-        <div className="rounded-lg overflow-hidden mb-4">
-          <img
-            src="/images/hero-rr.jpg"
-            alt="More than a reply, a read on what's really going on"
-            style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10 }}
-          />
-        </div>
-        <p style={{
-          margin: '0 0 24px', color: '#8A867B', fontFamily: "'Playfair Display', serif", fontStyle: 'normal',
-          fontWeight: 500, fontSize: 19, lineHeight: 1.4, letterSpacing: '0.01em', textAlign: 'center',
-        }}>
-          More than a reply, a read on what's really going on
-        </p>
-
-        <div className="rounded-xl p-5 space-y-4" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
-          <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.businessLabel}</label>
-            <input
-              type="text"
-              value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
-              placeholder={t.businessPh}
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-              style={{ background: '#FAF9F4', border: '1px solid #E4E1D6', color: '#2D2A26' }}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.reviewLabel}</label>
-            <textarea
-              value={reviewText}
-              onChange={(e) => setReviewText(e.target.value)}
-              placeholder={t.reviewPh}
-              rows={4}
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
-              style={{ background: '#FAF9F4', border: '1px solid #E4E1D6', color: '#2D2A26' }}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.toneLabel}</label>
-            <div className="flex gap-2">
-              {tones.map(tn => (
-                <button
-                  key={tn.value}
-                  onClick={() => setTone(tn.value)}
-                  className="flex-1 text-xs py-2 rounded-lg font-medium"
-                  style={{
-                    background: tone === tn.value ? '#D97757' : '#FAF9F4',
-                    color: tone === tn.value ? '#FFFFFF' : '#6B6659',
-                    border: '1px solid ' + (tone === tn.value ? '#D97757' : '#E4E1D6'),
-                  }}
-                >
-                  {tn.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: '#6B6659' }}>{t.photoLabel} <span style={{ opacity: 0.6, fontWeight: 400 }}>({photos.length}/3)</span></label>
-            <div className="flex items-center gap-2 flex-wrap">
-              {photos.map((p, i) => (
-                <div key={i} style={{ position: 'relative', width: 56, height: 56 }}>
-                  <img src={p.preview} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover' }} />
-                  <button
-                    type="button"
-                    onClick={() => removePhoto(i)}
-                    aria-label="Remove photo"
-                    style={{
-                      position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%',
-                      background: '#C0574B', color: '#FFF', border: '2px solid #F5F4EE', fontSize: 11,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
-                    }}
-                  >
-                    ✕
-                  </button>
+            <div className="rr-form">
+              <div style={{ display: 'grid', gap: 20 }}>
+                <div>
+                  <label className="f">{t.businessLabel}</label>
+                  <input type="text" className="rr-in" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder={t.businessPh} />
                 </div>
-              ))}
-              {photos.length < 3 && (
-                <label
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer"
-                  style={{ background: '#FAF9F4', border: '1px dashed #E4E1D6', color: '#87837A' }}
-                >
-                  <span style={{ width: 24, height: 24, borderRadius: 6, background: '#F1EFE6', flexShrink: 0 }} />
-                  <span>{t.uploadPhoto}</span>
-                  <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
-                </label>
+                <div>
+                  <label className="f">{t.reviewLabel}</label>
+                  <textarea className="rr-in" value={reviewText} onChange={(e) => setReviewText(e.target.value)} placeholder={t.reviewPh} rows={5} style={{ resize: 'vertical', lineHeight: 1.55 }} />
+                </div>
+                <div>
+                  <label className="f">{t.toneLabel}</label>
+                  <div className="rr-seg">
+                    {tones.map(tn => (
+                      <button key={tn.value} className={tone === tn.value ? 'on' : ''} onClick={() => setTone(tn.value)}>{tn.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="f">{t.photoLabel} <span style={{ color: C.mute, fontWeight: 400 }}>({photos.length}/3)</span></label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    {photos.map((p, i) => (
+                      <div key={i} style={{ position: 'relative', width: 60, height: 60 }}>
+                        <img src={p.preview} alt="" style={{ width: 60, height: 60, borderRadius: 12, objectFit: 'cover' }} />
+                        <button type="button" onClick={() => removePhoto(i)} aria-label="Remove photo" style={{
+                          position: 'absolute', top: -6, insetInlineEnd: -6, width: 21, height: 21, borderRadius: '50%',
+                          background: C.ink, color: '#FFF', border: '2px solid #fff', fontSize: 10,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
+                        }}>✕</button>
+                      </div>
+                    ))}
+                    {photos.length < 3 && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 9, borderRadius: 12, padding: '11px 15px', fontSize: 14, cursor: 'pointer', background: C.field, border: `1px dashed #D3CEC1`, color: C.soft }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={C.acc} strokeWidth="1.9" strokeLinecap="round"><rect x="3" y="5" width="18" height="14" rx="3" /><circle cx="9" cy="11" r="2" /><path d="M21 16l-5-5-8 8" /></svg>
+                        <span>{t.uploadPhoto}</span>
+                        <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} style={{ display: 'none' }} />
+                      </label>
+                    )}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, cursor: 'pointer', color: C.soft, marginInlineStart: 'auto' }}>
+                      <input type="checkbox" checked={includeEmoji} onChange={(e) => setIncludeEmoji(e.target.checked)} style={{ accentColor: C.acc, width: 16, height: 16 }} />
+                      {t.emojiToggle}
+                    </label>
+                  </div>
+                </div>
+
+                {error && <p style={{ color: '#B34B3C', fontSize: 14, margin: 0 }}>{error}</p>}
+
+                <button onClick={handleGenerate} disabled={loading} className="rr-btn rr-acc" style={{ width: '100%', borderRadius: 14, opacity: loading ? 0.65 : 1 }}>
+                  {loading ? t.generatingBtn : t.generateBtn}
+                </button>
+              </div>
+            </div>
+
+            {result && (
+              <div style={{ marginTop: 28, display: 'grid', gap: 14 }}>
+                {photos.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {photos.map((p, i) => (
+                      <img key={i} src={p.preview} alt="" style={{
+                        width: photos.length === 1 ? '100%' : `calc(${100 / Math.min(photos.length, 3)}% - 6px)`,
+                        aspectRatio: '1.6 / 1', borderRadius: 14, objectFit: 'cover',
+                      }} />
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: 12.5, fontWeight: 700, padding: '6px 12px', borderRadius: 999,
+                    background: sentimentStyles[result.sentiment]?.bg || '#F1EFE6', color: sentimentStyles[result.sentiment]?.text || '#6B6659',
+                  }}>
+                    {sentimentStyles[result.sentiment]?.label || result.sentiment}
+                  </span>
+                  {result.subtext && result.subtext.trim() && (
+                    <span style={{ fontSize: 13.5, color: C.soft, fontStyle: 'italic' }}>{t.subtextLabel}: {result.subtext}</span>
+                  )}
+                </div>
+
+                <p className="rr-lbl" style={{ margin: '4px 0 0' }}><span>{t.repliesHeading}</span></p>
+                {result.replies.map((reply, idx) => (
+                  <div key={idx} className="rr-res">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.acc2 }}>Option {idx + 1}</span>
+                      <button onClick={() => handleCopy(reply, idx)} className="rr-btn" style={{
+                        background: copiedIdx === idx ? '#EAF3EC' : C.tint, color: copiedIdx === idx ? '#3D6B4A' : C.acc2, padding: '6px 14px', fontSize: 12.5,
+                      }}>
+                        {copiedIdx === idx ? t.copiedBtn : t.copyBtn}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: 15, lineHeight: 1.65, margin: 0 }}>{reply}</p>
+                  </div>
+                ))}
+
+                {result.insight && result.insight.trim() && (
+                  <div style={{ background: C.ink, color: '#F5F1EA', borderRadius: 18, padding: '18px 22px' }}>
+                    <div className="rr-lbl" style={{ color: '#B9B2A6', marginBottom: 8 }}>
+                      <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#F08A5D', marginInlineEnd: 7 }} />For your eyes only</span>
+                    </div>
+                    <p style={{ fontSize: 14.5, lineHeight: 1.6, margin: 0 }}>{result.insight}</p>
+                  </div>
+                )}
+
+                {result.sentiment === 'positive' && !socialPost && (
+                  <button onClick={handleGenerateSocialPost} disabled={socialLoading} className="rr-btn" style={{ width: '100%', borderRadius: 14, padding: '14px 0', fontSize: 14, background: '#fff', border: `1px solid ${C.acc}`, color: socialLoading ? C.mute : C.acc2 }}>
+                    {socialLoading ? t.socialGeneratingBtn : t.socialBtnLabel}
+                  </button>
+                )}
+
+                {socialPost && (
+                  <div className="rr-res">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.acc2 }}>{t.socialHeading}</span>
+                      <button onClick={handleCopySocial} className="rr-btn" style={{ background: socialCopied ? '#EAF3EC' : C.tint, color: socialCopied ? '#3D6B4A' : C.acc2, padding: '6px 14px', fontSize: 12.5 }}>
+                        {socialCopied ? t.copiedBtn : t.copyBtn}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: 15, lineHeight: 1.65, margin: '0 0 10px' }}>{socialPost.caption}</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {socialPost.hashtags.map((tag, i) => (
+                        <span key={i} style={{ fontSize: 12.5, color: C.acc2, background: C.tint, borderRadius: 999, padding: '4px 10px' }}>#{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(result.sentiment === 'negative' || result.sentiment === 'mixed') && !followUpMsg && (
+                  <button onClick={handleGenerateFollowUp} disabled={followUpLoading} className="rr-btn" style={{ width: '100%', borderRadius: 14, padding: '14px 0', fontSize: 14, background: '#fff', border: '1px solid #B34B3C', color: followUpLoading ? C.mute : '#B34B3C' }}>
+                    {followUpLoading ? t.followUpGeneratingBtn : t.followUpBtnLabel}
+                  </button>
+                )}
+
+                {followUpMsg && (
+                  <div className="rr-res">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#B34B3C' }}>{t.followUpHeading}</span>
+                      <button onClick={handleCopyFollowUp} className="rr-btn" style={{ background: followUpCopied ? '#EAF3EC' : '#FBEAE7', color: followUpCopied ? '#3D6B4A' : '#B34B3C', padding: '6px 14px', fontSize: 12.5 }}>
+                        {followUpCopied ? t.copiedBtn : t.copyBtn}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: 15, lineHeight: 1.65, margin: 0 }}>{followUpMsg}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ maxWidth: 420, margin: '26px auto 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12.5, color: C.mute }}>
+                <span>Today's free generations</span>
+                <span style={{ fontWeight: 600 }}>{DAILY_GEN_LIMIT - dailyCount}/{DAILY_GEN_LIMIT} left</span>
+              </div>
+              <div style={{ height: 4, borderRadius: 999, background: C.line, overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 999, width: `${(dailyCount / DAILY_GEN_LIMIT) * 100}%`, background: dailyCount >= DAILY_GEN_LIMIT ? '#B34B3C' : C.acc, transition: 'width 0.3s ease' }} />
+              </div>
+              {dailyCount >= DAILY_GEN_LIMIT && (
+                <p style={{ fontSize: 12.5, textAlign: 'center', color: '#B34B3C', marginTop: 8 }}>Today's limit reached. Come back tomorrow for 50 more free generations.</p>
               )}
             </div>
           </div>
+        </section>
 
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: '#6B6659' }}>
-              <input
-                type="checkbox"
-                checked={includeEmoji}
-                onChange={(e) => setIncludeEmoji(e.target.checked)}
-                style={{ accentColor: '#D97757' }}
-              />
-              {t.emojiToggle}
-            </label>
+        {/* ----- FEATURES ----- */}
+        <section className="rr-sec">
+          <div className="rr-split">
+            <div>
+              <p className="rr-eyebrow" style={{ textAlign: 'start' }}>What you get</p>
+              <h2 style={{ textAlign: 'start', margin: '0 0 16px' }}>More than a reply. A read on what's really going on.</h2>
+              <p className="rr-sub" style={{ textAlign: 'start', margin: '0 0 28px' }}>Every review is feedback someone took the time to write. ReviewReply AI turns each one into a reply you're proud of and a clear next step for your business.</p>
+              <button className="rr-btn rr-acc" onClick={() => scrollTo('try')}>Try it on your review →</button>
+            </div>
+            <img src="/images/hero-rr.jpg" alt="One review in, thoughtful replies out" width="1200" height="900" loading="lazy" className="rr-art" />
           </div>
+          <div className="rr-grid3">
+            {FEATURES.map(f => (
+              <div key={f.title} className="rr-box">
+                <div className="rr-ico">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.acc2} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d={f.icon} /></svg>
+                </div>
+                <h3>{f.title}</h3><p>{f.text}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
-          {error && <p className="text-sm" style={{ color: '#B34B3C' }}>{error}</p>}
-
-          <button
-            onClick={handleGenerate}
-            disabled={loading}
-            className="w-full font-medium py-2.5 rounded-lg text-sm transition"
-            style={{
-              background: loading ? '#E4E1D6' : '#D97757',
-              color: loading ? '#87837A' : '#FFFFFF',
-            }}
-          >
-            {loading ? t.generatingBtn : t.generateBtn}
-          </button>
-        </div>
-
-        {result && (
-          <div className="mt-6">
-            {photos.length > 0 && (
-              <div className="flex gap-2 mb-4" style={{ flexWrap: 'wrap' }}>
-                {photos.map((p, i) => (
-                  <img
-                    key={i}
-                    src={p.preview}
-                    alt=""
-                    style={{
-                      width: photos.length === 1 ? '100%' : `calc(${100 / Math.min(photos.length, 3)}% - 6px)`,
-                      aspectRatio: '1.6 / 1', borderRadius: 10, objectFit: 'cover',
-                    }}
-                  />
+        {/* ----- PRICING ----- */}
+        <section id="pricing" className="rr-sec">
+          <p className="rr-eyebrow">Pricing</p>
+          <h2>Pay once. Reply forever.</h2>
+          <p className="rr-sub">No subscription and no monthly bill. Try it free first.</p>
+          <div className="rr-price">
+            <div className="l">
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.acc2 }}>ReviewReply AI license</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '12px 0 4px' }}>
+                <span style={{ fontSize: 60, fontWeight: 800, letterSpacing: '-.04em', lineHeight: 1 }}>$79</span>
+                <span style={{ color: C.mute, fontSize: 15 }}>one time</span>
+              </div>
+              <ul>
+                {['Unlimited replies, every day', 'Private note and tone reading on every review', 'Social posts and private follow-up messages', '20 languages and photo support', 'All future updates included'].map(x => (
+                  <li key={x}><i>✓</i>{x}</li>
                 ))}
-              </div>
-            )}
-            <div className="flex items-center gap-2 mb-1.5">
-              <span
-                className="text-xs font-semibold px-2 py-1 rounded-full"
-                style={{
-                  background: sentimentStyles[result.sentiment]?.bg || '#F1EFE6',
-                  color: sentimentStyles[result.sentiment]?.text || '#6B6659',
-                }}
-              >
-                {sentimentStyles[result.sentiment]?.label || result.sentiment}
-              </span>
+              </ul>
             </div>
-
-            {result.subtext && result.subtext.trim() && (
-              <p className="text-xs italic mb-3" style={{ color: '#87837A' }}>
-                {t.subtextLabel}: {result.subtext}
-              </p>
-            )}
-
-            <h2 className="text-sm font-semibold mb-2" style={{ color: '#D97757' }}>{t.repliesHeading}</h2>
-            <div className="space-y-2">
-              {result.replies.map((reply, idx) => (
-                <div key={idx} className="rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
-                  <p className="text-sm leading-relaxed mb-3" style={{ color: '#2D2A26' }}>{reply}</p>
-                  <button
-                    onClick={() => handleCopy(reply, idx)}
-                    className="text-xs font-medium"
-                    style={{ color: copiedIdx === idx ? '#3D6B4A' : '#A56A45' }}
-                  >
-                    {copiedIdx === idx ? t.copiedBtn : t.copyBtn}
-                  </button>
-                </div>
-              ))}
+            <div className="r">
+              <p style={{ fontSize: 15.5, lineHeight: 1.6, color: C.ink, margin: '0 0 24px' }}>Answering ten reviews by hand takes about an hour. With ReviewReply AI it takes a few minutes, and every reply still sounds like you.</p>
+              <a href="/buy.html" className="rr-btn rr-acc" style={{ width: '100%' }}>Get lifetime access →</a>
+              <a href="/unlock.html" style={{ display: 'block', textAlign: 'center', marginTop: 14, fontSize: 13.5, color: C.soft }}>{t.haveCodeLabel || 'Already have a code?'} <span style={{ color: C.acc2, fontWeight: 600 }}>Enter it here</span></a>
             </div>
-
-            {result.insight && result.insight.trim() && (
-              <div className="mt-4 rounded-xl p-4" style={{ background: '#FBF2E3', border: '1px dashed #E4C9A0' }}>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A56A45" strokeWidth="1.8">
-                    <path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" />
-                  </svg>
-                  <span className="text-xs font-semibold" style={{ color: '#A56A45' }}>For your eyes only</span>
-                </div>
-                <p className="text-sm leading-relaxed" style={{ color: '#6B5A3E' }}>{result.insight}</p>
-              </div>
-            )}
-
-            {result.sentiment === 'positive' && !socialPost && (
-              <button
-                onClick={handleGenerateSocialPost}
-                disabled={socialLoading}
-                className="mt-4 w-full text-xs font-medium py-2.5 rounded-lg"
-                style={{ background: '#FFFFFF', border: '1px solid #D97757', color: socialLoading ? '#87837A' : '#D97757' }}
-              >
-                {socialLoading ? t.socialGeneratingBtn : t.socialBtnLabel}
-              </button>
-            )}
-
-            {socialPost && (
-              <div className="mt-4 rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
-                <h3 className="text-xs font-semibold mb-2" style={{ color: '#D97757' }}>{t.socialHeading}</h3>
-                <p className="text-sm leading-relaxed mb-2" style={{ color: '#2D2A26' }}>{socialPost.caption}</p>
-                <div className="flex flex-wrap gap-1 mb-3">
-                  {socialPost.hashtags.map((tag, i) => (
-                    <span key={i} className="text-xs" style={{ color: '#A56A45' }}>#{tag}</span>
-                  ))}
-                </div>
-                <button
-                  onClick={handleCopySocial}
-                  className="text-xs font-medium"
-                  style={{ color: socialCopied ? '#3D6B4A' : '#A56A45' }}
-                >
-                  {socialCopied ? t.copiedBtn : t.copyBtn}
-                </button>
-              </div>
-            )}
-
-            {(result.sentiment === 'negative' || result.sentiment === 'mixed') && !followUpMsg && (
-              <button
-                onClick={handleGenerateFollowUp}
-                disabled={followUpLoading}
-                className="mt-4 w-full text-xs font-medium py-2.5 rounded-lg"
-                style={{ background: '#FFFFFF', border: '1px solid #B34B3C', color: followUpLoading ? '#87837A' : '#B34B3C' }}
-              >
-                {followUpLoading ? t.followUpGeneratingBtn : t.followUpBtnLabel}
-              </button>
-            )}
-
-            {followUpMsg && (
-              <div className="mt-4 rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E4E1D6' }}>
-                <h3 className="text-xs font-semibold mb-2" style={{ color: '#B34B3C' }}>{t.followUpHeading}</h3>
-                <p className="text-sm leading-relaxed mb-3" style={{ color: '#2D2A26' }}>{followUpMsg}</p>
-                <button
-                  onClick={handleCopyFollowUp}
-                  className="text-xs font-medium"
-                  style={{ color: followUpCopied ? '#3D6B4A' : '#A56A45' }}
-                >
-                  {followUpCopied ? t.copiedBtn : t.copyBtn}
-                </button>
-              </div>
-            )}
           </div>
-        )}
-
-        <div style={{ maxWidth: 480, margin: '0 auto 16px' }}>
-          <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-            <span className="text-xs" style={{ color: '#87837A' }}>Today's free generations</span>
-            <span className="text-xs" style={{ color: '#87837A', fontWeight: 600 }}>{DAILY_GEN_LIMIT - dailyCount}/{DAILY_GEN_LIMIT} left</span>
-          </div>
-          <div style={{ height: 4, borderRadius: 999, background: '#E4E1D6', overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', borderRadius: 999, width: `${(dailyCount / DAILY_GEN_LIMIT) * 100}%`,
-              background: dailyCount >= DAILY_GEN_LIMIT ? '#B34B3C' : '#D97757',
-              transition: 'width 0.3s ease',
-            }} />
-          </div>
-          {dailyCount >= DAILY_GEN_LIMIT && (
-            <p className="text-xs text-center" style={{ color: '#B34B3C', marginTop: 8 }}>Today's limit reached — come back tomorrow for 50 more free generations.</p>
-          )}
-        </div>
+        </section>
 
         {/* ----- FAQ ----- */}
-        <div className="mt-14 pt-10" style={{ borderTop: '1px solid #E4E1D6' }}>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#2D2A26', textAlign: 'center', margin: '0 0 6px' }}>
-            Frequently asked questions, answered.
-          </h2>
-          <p style={{ fontSize: 13.5, color: '#87837A', textAlign: 'center', margin: '0 0 28px' }}>
-            Everything people usually ask before trying ReviewReply AI.
-          </p>
-          <div className="mx-auto" style={{ maxWidth: 640 }}>
-            {[
-              {
-                q: 'Does this work for Google, Yelp, TripAdvisor, or just one platform?',
-                a: 'Paste a review from anywhere — Google, Yelp, TripAdvisor, Facebook, Amazon, app stores. ReviewReply AI reads the text you give it, it doesn’t need to be connected to any specific platform.',
-              },
-              {
-                q: 'Does it post the reply for me?',
-                a: 'No — it drafts three reply options and you copy the one you like onto the platform yourself. This keeps you in control of what actually goes out under your business’s name.',
-              },
-              {
-                q: 'Will the replies sound like a robot wrote them?',
-                a: 'The AI matches the tone of the original review and gives you three different options — different lengths and registers — so you can pick the one that sounds like you, not a template.',
-              },
-              {
-                q: 'What’s the private note I keep hearing about?',
-                a: 'With every reply, you also get a note only you see — it flags if the review is quietly pointing at a bigger pattern, like a recurring complaint about wait times or a training gap.',
-              },
-              {
-                q: 'What happens after my free preview?',
-                a: 'You get one free reply to try it out, plus 50 free generations every day after that. Buying a license ($79, one time, no subscription) removes the daily cap for good.',
-              },
-            ].map((item, i) => (
-              <div key={i} style={{ borderBottom: '1px solid #E4E1D6' }}>
-                <button
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  style={{
-                    width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                  }}
-                >
-                  <span style={{ fontSize: 14.5, fontWeight: 600, color: '#2D2A26' }}>{item.q}</span>
-                  <span style={{
-                    flexShrink: 0, fontSize: 18, color: '#A56A45', transform: openFaq === i ? 'rotate(45deg)' : 'none',
-                    transition: 'transform 0.2s ease',
-                  }}>+</span>
+        <section id="faq" className="rr-sec">
+          <p className="rr-eyebrow">FAQ</p>
+          <h2>Questions, answered</h2>
+          <p className="rr-sub">Everything people usually ask before trying ReviewReply AI.</p>
+          <div className="rr-faq">
+            {FAQ.map((item, i) => (
+              <div key={i} style={{ borderBottom: `1px solid ${C.line}` }}>
+                <button onClick={() => setOpenFaq(openFaq === i ? null : i)}>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: C.ink }}>{item.q}</span>
+                  <span style={{ flexShrink: 0, width: 30, height: 30, borderRadius: '50%', background: openFaq === i ? C.acc : C.tint, color: openFaq === i ? '#fff' : C.acc2, display: 'grid', placeItems: 'center', fontSize: 18, transform: openFaq === i ? 'rotate(45deg)' : 'none', transition: 'all .2s ease' }}>+</span>
                 </button>
-                {openFaq === i && (
-                  <p style={{ fontSize: 13.5, color: '#5B564C', lineHeight: 1.6, margin: '0 4px 18px' }}>{item.a}</p>
-                )}
+                {openFaq === i && <p style={{ fontSize: 15, color: C.soft, lineHeight: 1.65, margin: '0 2px 22px' }}>{item.a}</p>}
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        {/* ----- LIVE FACTS TICKER ----- */}
-        <div className="mt-14 mx-auto" style={{
-          maxWidth: 640, borderRadius: 16, padding: '22px 28px',
-          background: 'linear-gradient(135deg, #FBEFE8, #F5F4EE)', border: '1px solid #EDD9C8',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, minHeight: 60,
-        }}>
-          <span key={`stars-${factIdx}`} style={{ fontSize: 15, flexShrink: 0, animation: 'factFadeIn 0.5s ease' }}>
-            {Array.from({ length: 5 }).map((_, s) => (
-              <span key={s} style={{ color: s < LIVE_FACTS[factIdx].stars ? '#D97757' : '#E4DCD2' }}>&#9733;</span>
-            ))}
-          </span>
-          <span key={factIdx} style={{
-            fontSize: 14, fontWeight: 600, color: '#2D2A26', textAlign: 'center',
-            animation: 'factFadeIn 0.5s ease',
-          }}>
-            {LIVE_FACTS[factIdx].text}
-          </span>
-          <style>{`
-            @keyframes factFadeIn {
-              from { opacity: 0; transform: translateY(6px); }
-              to { opacity: 1; transform: translateY(0); }
-            }
-          `}</style>
-        </div>
+        {/* ----- FINAL CTA ----- */}
+        <section className="rr-final">
+          <h2 style={{ color: '#fff', margin: '0 auto 14px' }}>Your next review is already waiting.</h2>
+          <p style={{ color: 'rgba(255,255,255,.72)', fontSize: 17, margin: '0 auto 30px', maxWidth: 480, lineHeight: 1.55 }}>Paste it in and see three replies and a private note in seconds. The first one is free.</p>
+          <button className="rr-btn rr-acc" onClick={() => scrollTo('try')}>Reply to a review free →</button>
+        </section>
 
-        <div className="mt-8" style={{ maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>
+        {/* ----- RATE ----- */}
+        <div style={{ maxWidth: 420, margin: '56px auto 0' }}>
           {rateStars === 0 ? (
-            <div className="flex flex-col items-center gap-2">
-              <span className="text-sm font-medium" style={{ color: '#2D2A26' }}>How's ReviewReply AI working for you?</span>
-              <div className="flex items-center gap-1">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>How's ReviewReply AI working for you?</span>
+              <div style={{ display: 'flex', gap: 4 }}>
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setRateStars(n)}
-                    aria-label={`Rate ${n} star`}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3 }}
-                  >
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#D97757" strokeWidth="1.6">
-                      <path d="M12 2.5l2.9 6.4 6.9.7-5.2 4.8 1.5 6.9-6.1-3.6-6.1 3.6 1.5-6.9-5.2-4.8 6.9-.7z" />
-                    </svg>
+                  <button key={n} onClick={() => setRateStars(n)} aria-label={`Rate ${n} star`} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3 }}>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#D97757" strokeWidth="1.6"><path d="M12 2.5l2.9 6.4 6.9.7-5.2 4.8 1.5 6.9-6.1-3.6-6.1 3.6 1.5-6.9-5.2-4.8 6.9-.7z" /></svg>
                   </button>
                 ))}
               </div>
             </div>
           ) : rateStars >= 4 ? (
-            <div className="flex flex-col items-center gap-2 text-center">
-              <span className="text-sm" style={{ color: '#2D2A26' }}>Thank you! That means a lot.</span>
-              <a
-                href="https://plainwork.website/#rate-us"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-medium"
-                style={{ color: '#A56A45' }}
-              >
-                Rate us on Plainwork &rarr;
-              </a>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
+              <span style={{ fontSize: 14 }}>Thank you! That means a lot.</span>
+              <a href="https://plainwork.website/#rate-us" target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, fontWeight: 600, color: '#A56A45' }}>Rate us on Plainwork →</a>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              <span className="text-sm text-center" style={{ color: '#2D2A26' }}>Sorry to hear that &mdash; what went wrong?</span>
-              <textarea
-                value={rateProblem}
-                onChange={(e) => setRateProblem(e.target.value)}
-                placeholder="Describe the issue..."
-                rows={3}
-                className="w-full rounded-lg p-2 text-sm"
-                style={{ border: '1px solid #E4E1D6', resize: 'vertical', fontFamily: 'inherit' }}
-              />
-              <a
-                href={`mailto:kssw117@gmail.com?subject=${encodeURIComponent('ReviewReply AI feedback')}&body=${encodeURIComponent(rateProblem)}`}
-                className="text-sm font-medium text-center"
-                style={{ color: '#FFFFFF', background: '#D97757', borderRadius: 999, padding: '8px 0', textDecoration: 'none' }}
-              >
-                Send feedback
-              </a>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span style={{ fontSize: 14, textAlign: 'center' }}>Sorry to hear that. What went wrong?</span>
+              <textarea className="rr-in" value={rateProblem} onChange={(e) => setRateProblem(e.target.value)} placeholder="Describe the issue..." rows={3} style={{ resize: 'vertical' }} />
+              <a href={`mailto:kssw117@gmail.com?subject=${encodeURIComponent('ReviewReply AI feedback')}&body=${encodeURIComponent(rateProblem)}`} className="rr-btn" style={{ color: '#fff', background: C.acc, padding: '11px 0', fontSize: 14 }}>Send feedback</a>
             </div>
           )}
         </div>
 
-        <div className="flex flex-col items-center justify-center gap-1.5 mt-10 pt-6" style={{ borderTop: '1px solid #E4E1D6' }}>
-          <div className="flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#87837A" strokeWidth="1.5">
-              <path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3z" />
-            </svg>
-            <span className="text-xs" style={{ color: '#87837A' }}>Powered by Claude &middot; Plainwork by Ksenia</span>
+        {/* ----- FOOTER ----- */}
+        <footer style={{ marginTop: 56, borderTop: `1px solid ${C.line}` }}>
+          <div className="rr-foot">
+            <span>Powered by Claude · Plainwork by Ksenia</span>
+            <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' }}>
+              <a href="/terms.html">Terms</a>
+              <a href="/privacy.html">Privacy</a>
+              <a href="/refund.html">Refunds</a>
+              {!showSupportEmail
+                ? <button onClick={() => setShowSupportEmail(true)}>Support</button>
+                : <a href="mailto:kssw117@gmail.com">kssw117@gmail.com</a>}
+            </div>
           </div>
-          <div className="flex items-center gap-3 mt-1">
-            <a href="/terms.html" className="text-xs" style={{ color: '#A56A45' }}>Terms</a>
-            <a href="/privacy.html" className="text-xs" style={{ color: '#A56A45' }}>Privacy</a>
-            <a href="/refund.html" className="text-xs" style={{ color: '#A56A45' }}>Refunds</a>
-          </div>
-          <div className="mt-1">
-            {!showSupportEmail ? (
-              <button
-                onClick={() => setShowSupportEmail(true)}
-                className="text-xs"
-                style={{ color: '#A56A45', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                Support
-              </button>
-            ) : (
-              <a href="mailto:kssw117@gmail.com" className="text-xs" style={{ color: '#A56A45' }}>
-                kssw117@gmail.com
-              </a>
-            )}
-          </div>
-          <p className="text-xs" style={{ color: '#87837A', textAlign: 'center', marginTop: 10, opacity: 0.8, fontSize: 10.5 }}>
-            Грезина Ксения Викторовна (Ksenia Grezina) &middot; Tax ID (ИНН) 710607167655
+          <p style={{ fontSize: 11, color: C.mute, opacity: 0.8, margin: '0 0 28px' }}>
+            Грезина Ксения Викторовна (Ksenia Grezina) · Tax ID (ИНН) 710607167655
           </p>
-        </div>
+        </footer>
       </div>
 
-      {/* Плавающая кнопка "как пользоваться" — в углу экрана */}
+      {/* Плавающая кнопка "как пользоваться" */}
       <button
-        onClick={() => {
-          playPopSound(!showHelpBubble);
-          setShowHelpBubble(v => !v);
-        }}
+        onClick={() => { playPopSound(!showHelpBubble); setShowHelpBubble(v => !v); }}
         aria-label="How it works"
         style={{
-          position: 'fixed', bottom: 20, right: 20, width: 48, height: 48, borderRadius: '50%',
-          background: 'linear-gradient(90deg, #D97757, #BD5D3A)', color: '#FFF', border: 'none',
+          position: 'fixed', bottom: 20, insetInlineEnd: 20, width: 48, height: 48, borderRadius: '50%',
+          background: 'linear-gradient(135deg, #D97757, #BD5D3A)', color: '#FFF', border: 'none',
           cursor: 'pointer', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 14px rgba(189,93,58,0.35)', zIndex: 50,
+          boxShadow: '0 8px 22px rgba(189,93,58,0.4)', zIndex: 50,
         }}
       >
-        {showHelpBubble ? '\u2715' : '?'}
+        {showHelpBubble ? '✕' : '?'}
       </button>
-
       {showHelpBubble && (
-        <div
-          style={{
-            position: 'fixed', bottom: 80, right: 20, width: 300, maxWidth: 'calc(100vw - 40px)',
-            background: '#FFF', borderRadius: 14, padding: 18, boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
-            border: '1px solid #EDEAE0', zIndex: 50,
-          }}
-        >
-          <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: '#2D2A26' }}>How ReviewReply AI works</p>
+        <div style={{
+          position: 'fixed', bottom: 80, insetInlineEnd: 20, width: 300, maxWidth: 'calc(100vw - 40px)',
+          background: '#FFF', borderRadius: 16, padding: 18, boxShadow: '0 20px 50px -18px rgba(0,0,0,0.3)',
+          border: `1px solid ${C.line}`, zIndex: 50,
+        }}>
+          <p style={{ margin: '0 0 8px', fontSize: 13.5, fontWeight: 700 }}>How ReviewReply AI works</p>
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: '#5B564C' }}>
             Paste a customer review. The AI reads it, checks the tone, and drafts three reply options, plus a private note only you see. Attach up to 3 photos for extra context. Turn a great review into a social post in one click.
           </p>
